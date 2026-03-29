@@ -18,6 +18,13 @@ function onAlgo(ev: Event) {
   atlasStore.setAlgorithm(v)
 }
 
+function onMaxEdgeChange(ev: Event) {
+  const el = ev.target as HTMLInputElement
+  const v = parseInt(el.value, 10)
+  atlasStore.setMaxAtlasEdge(Number.isFinite(v) ? v : 4096)
+  el.value = String(atlasStore.state.maxAtlasEdge)
+}
+
 function startReverse() {
   pendingJson.value = null
   fileJson.value?.click()
@@ -50,11 +57,25 @@ async function onPng(ev: Event) {
     <div class="win-panel-title">Atlas 图集</div>
     <div class="inner">
       <label class="field">
+        <span>单张最大边长 (px)</span>
+        <input
+          type="number"
+          class="win-input"
+          :value="atlasStore.state.maxAtlasEdge"
+          min="64"
+          max="16384"
+          step="1"
+          title="单张图集允许的宽高上限；超出则自动拆成多张图集"
+          @change="onMaxEdgeChange"
+        />
+      </label>
+      <label class="field">
         <span>打包算法</span>
         <select class="win-select" :value="atlasStore.state.algorithm" @change="onAlgo">
           <option v-for="a in algorithms" :key="a.id" :value="a.id">{{ a.label }}</option>
         </select>
       </label>
+      <p class="tip sheet-hint">多页时请在<strong>画布标题栏</strong>翻页或使用「全部总览」查看竖向总排版。</p>
       <div class="err" v-if="atlasStore.state.packError">{{ atlasStore.state.packError }}</div>
       <div class="btns">
         <button type="button" class="win-btn" @click="atlasStore.runPack()">运行打包</button>
@@ -63,7 +84,7 @@ async function onPng(ev: Event) {
       <div class="btns">
         <button type="button" class="win-btn" @click="startReverse">逆向拆分</button>
       </div>
-      <p class="tip">逆向：先选清单 JSON，再选对应 PNG。</p>
+      <p class="tip">多页导出时为 atlas-00.json/png、atlas-01…（页码从 0）；单页仍为 atlas.json/png。逆向：先选清单再选 PNG。</p>
     </div>
     <input ref="fileJson" type="file" class="hidden" accept=".json,application/json" @change="onJson" />
     <input ref="filePng" type="file" class="hidden" accept="image/png" @change="onPng" />
@@ -93,6 +114,20 @@ async function onPng(ev: Event) {
   gap: 4px;
   font-size: 11px;
   color: #444;
+}
+.win-input {
+  font-family: inherit;
+  font-size: 12px;
+  height: 23px;
+  padding: 2px 6px;
+  border: 1px solid var(--win-border-dark, #707070);
+  background: #fff;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.sheet-hint {
+  margin: -4px 0 0;
 }
 .err {
   font-size: 11px;

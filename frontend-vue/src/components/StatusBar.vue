@@ -1,15 +1,26 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { atlasStore } from '../stores/atlasStore'
+
+const sheetInfo = computed(() => {
+  const sh = atlasStore.state.packSheets
+  const n = sh.length
+  if (!n) return null
+  const pageIdx = Math.min(Math.max(0, atlasStore.state.activeSheetIndex), n - 1)
+  const p = sh[pageIdx]
+  return { pageIdx, total: n, w: p.width, h: p.height }
+})
 </script>
 
 <template>
   <div class="status-bar">
     <span class="cell main">{{ atlasStore.state.statusMessage }}</span>
     <span class="cell">图片: {{ atlasStore.state.images.length }}</span>
-    <span class="cell" v-if="atlasStore.state.lastPack">
-      画布: {{ atlasStore.state.lastPack.width }}×{{ atlasStore.state.lastPack.height }}
+    <span class="cell" v-if="sheetInfo">
+      画布: {{ sheetInfo.w }}×{{ sheetInfo.h }}（页码 {{ sheetInfo.pageIdx }} / {{ sheetInfo.total }}）
     </span>
     <span class="cell" v-else>画布: —</span>
+    <span class="cell">上限: {{ atlasStore.state.maxAtlasEdge }}px</span>
     <span class="cell">算法: {{ atlasStore.state.algorithm }}</span>
   </div>
 </template>

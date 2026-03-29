@@ -40,6 +40,12 @@ async function onPngPicked(ev: Event) {
     atlasStore.state.statusMessage = e instanceof Error ? e.message : String(e)
   }
 }
+
+function menuClearAll() {
+  if (atlasStore.state.images.length === 0) return
+  if (!confirm('确定要清理全部图片吗？此操作不可撤销。')) return
+  atlasStore.clearAll()
+}
 </script>
 
 <template>
@@ -68,7 +74,7 @@ async function onPngPicked(ev: Event) {
       <span class="menu-label">编辑(E)</span>
       <div class="menu-drop">
         <button type="button" class="menu-item" @click="atlasStore.removeSelected()">删除选中</button>
-        <button type="button" class="menu-item" @click="atlasStore.clearAll()">清空列表</button>
+        <button type="button" class="menu-item" @click="menuClearAll">清理全部</button>
       </div>
     </div>
     <div class="menu-root">

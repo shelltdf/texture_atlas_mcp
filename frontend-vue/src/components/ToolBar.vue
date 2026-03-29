@@ -11,6 +11,12 @@ function onFiles(ev: Event) {
   if (input.files?.length) atlasStore.addFiles(input.files)
   input.value = ''
 }
+
+function clearAll() {
+  if (atlasStore.state.images.length === 0) return
+  if (!confirm('确定要清理全部图片吗？此操作不可撤销。')) return
+  atlasStore.clearAll()
+}
 </script>
 
 <template>
@@ -27,7 +33,8 @@ function onFiles(ev: Event) {
       <span class="ico">💾</span> 导出
     </button>
     <span class="sep" />
-    <button type="button" class="tb-btn" title="删除选中" @click="atlasStore.removeSelected()">删除</button>
+    <button type="button" class="tb-btn" title="删除当前选中" @click="atlasStore.removeSelected()">删除</button>
+    <button type="button" class="tb-btn danger" title="清空全部图片" @click="clearAll">清理全部</button>
   </div>
 </template>
 
@@ -63,6 +70,10 @@ function onFiles(ev: Event) {
 }
 .tb-btn:active {
   background: #d0e6fc;
+}
+.tb-btn.danger:hover {
+  border-color: #e8a0a0;
+  background: #ffe8e8;
 }
 .ico {
   font-size: 12px;

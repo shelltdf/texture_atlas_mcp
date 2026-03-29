@@ -2,7 +2,9 @@ import { computed, reactive } from 'vue'
 import {
   type PackAlgorithmId,
   type PackResult,
-  packWithAlgorithm,
+  clampMaxEdge,
+  DEFAULT_MAX_ATLAS_EDGE,
+  packWithAlgorithmSheets,
 } from '../lib/packing'
 import {
   buildManifest,
@@ -25,10 +27,9 @@ export interface AtlasImageEntry {
 
 function makeThumb(img: HTMLImageElement, max = 56): string {
   const c = document.createElement('canvas')
-  const s = max
   const iw = img.naturalWidth
   const ih = img.naturalHeight
-  const scale = Math.min(s / iw, s / ih, 1)
+  const scale = Math.min(max / iw, max / ih, 1)
   c.width = Math.max(1, Math.round(iw * scale))
   c.height = Math.max(1, Math.round(ih * scale))
   const ctx = c.getContext('2d')
@@ -62,7 +63,10 @@ const state = reactive({
   images: [] as AtlasImageEntry[],
   selectedId: null as string | null,
   algorithm: 'rows' as PackAlgorithmId,
-  lastPack: null as PackResult | null,
+  /** 单张图集允许的最大宽/高（正方形上限），用户可改 */
+  maxAtlasEdge: DEFAULT_MAX_ATLAS_EDGE,
+  packSheets: [] as PackResult[],
+  activeSheetIndex: 0,
   packError: '' as string,
   statusMessage: '就绪',
 })
@@ -72,6 +76,18 @@ const idToEntry = computed(() => {
   for (const e of state.images) m.set(e.id, e)
   return m
 })
+
+function getCurrentPack(): PackResult | null {
+  const sh = state.packSheets
+  if (!sh.length) return null
+  const i = Math.min(Math.max(0, state.activeSheetIndex), sh.length - 1)
+  return sh[i] ?? null
+}
+
+function clearPacks() {
+  state.packSheets = []
+  state.activeSheetIndex = 0
+}
 
 function setStatus(msg: string) {
   state.statusMessage = msg
@@ -102,27 +118,30 @@ function select(id: string | null) {
 
 function removeSelected() {
   if (!state.selectedId) return
-  const i = state.images.findIndex((x) => x.id === state.selectedId)
-  if (i >= 0) {
-    const [removed] = state.images.splice(i, 1)
-    URL.revokeObjectURL(removed.objectUrl)
-  }
-  state.selectedId = null
-  state.lastPack = null
-  setStatus('已删除选中项')
+  removeImage(state.selectedId)
+}
+
+function removeImage(id: string) {
+  const i = state.images.findIndex((x) => x.id === id)
+  if (i < 0) return
+  const [removed] = state.images.splice(i, 1)
+  URL.revokeObjectURL(removed.objectUrl)
+  if (state.selectedId === id) state.selectedId = null
+  clearPacks()
+  setStatus('已删除图片')
 }
 
 function clearAll() {
   for (const e of state.images) URL.revokeObjectURL(e.objectUrl)
   state.images = []
   state.selectedId = null
-  state.lastPack = null
+  clearPacks()
   setStatus('已清空列表')
 }
 
 function runPack() {
   state.packError = ''
-  state.lastPack = null
+  clearPacks()
   if (state.images.length === 0) {
     state.packError = '请先导入图片'
     setStatus(state.packError)
@@ -130,9 +149,16 @@ function runPack() {
   }
   try {
     const items = state.images.map((e) => ({ id: e.id, w: e.width, h: e.height }))
-    const result = packWithAlgorithm(state.algorithm, items)
-    state.lastPack = result
-    setStatus(`打包完成 ${result.width}×${result.height}（${state.algorithm}）`)
+    const maxEdge = clampMaxEdge(state.maxAtlasEdge)
+    state.maxAtlasEdge = maxEdge
+    const sheets = packWithAlgorithmSheets(state.algorithm, items, maxEdge)
+    state.packSheets = sheets
+    state.activeSheetIndex = 0
+    const cur = getCurrentPack()
+    const dim = cur ? `${cur.width}×${cur.height}` : '—'
+    setStatus(
+      `打包完成：共 ${sheets.length} 张图集，当前页码 ${state.activeSheetIndex} · ${dim}（${state.algorithm}，单张最大边 ${maxEdge}px）`,
+    )
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     state.packError = msg
@@ -140,9 +166,7 @@ function runPack() {
   }
 }
 
-function renderAtlasCanvas(): HTMLCanvasElement {
-  const pack = state.lastPack
-  if (!pack || pack.placements.length === 0) throw new Error('请先成功运行打包')
+function renderSheetCanvas(pack: PackResult): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = pack.width
   c.height = pack.height
@@ -160,25 +184,38 @@ function renderAtlasCanvas(): HTMLCanvasElement {
 
 async function exportPublish() {
   try {
-    const canvas = renderAtlasCanvas()
-    const pack = state.lastPack!
-    const sprites = pack.placements.map((p) => {
-      const e = idToEntry.value.get(p.id)
-      return {
-        id: p.id,
-        name: e?.name ?? p.id,
-        x: p.x,
-        y: p.y,
-        w: p.w,
-        h: p.h,
+    const sheets = state.packSheets
+    if (!sheets.length) throw new Error('请先成功运行打包')
+    const pad2 = (n: number) => String(n).padStart(2, '0')
+    for (let i = 0; i < sheets.length; i++) {
+      const pack = sheets[i]
+      const canvas = renderSheetCanvas(pack)
+      const sprites = pack.placements.map((p) => {
+        const e = idToEntry.value.get(p.id)
+        return {
+          id: p.id,
+          name: e?.name ?? p.id,
+          x: p.x,
+          y: p.y,
+          w: p.w,
+          h: p.h,
+        }
+      })
+      const manifest = buildManifest(pack.width, pack.height, sprites)
+      const json = JSON.stringify(manifest, null, 2)
+      const suffix = sheets.length > 1 ? `-${pad2(i)}` : ''
+      triggerDownloadText(json, `atlas${suffix}.json`)
+      const blob = await canvasToPngBlob(canvas)
+      triggerDownloadBlob(blob, `atlas${suffix}.png`)
+      if (i < sheets.length - 1) {
+        await new Promise((r) => setTimeout(r, 280))
       }
-    })
-    const manifest = buildManifest(pack.width, pack.height, sprites)
-    const json = JSON.stringify(manifest, null, 2)
-    triggerDownloadText(json, 'atlas.json')
-    const blob = await canvasToPngBlob(canvas)
-    triggerDownloadBlob(blob, 'atlas.png')
-    setStatus('已下载 atlas.json 与 atlas.png')
+    }
+    setStatus(
+      sheets.length > 1
+        ? `已下载 ${sheets.length} 组 atlas-00.json / png 起（页码从 0）`
+        : '已下载 atlas.json 与 atlas.png',
+    )
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     setStatus(msg)
@@ -206,14 +243,24 @@ async function reverseFromFiles(jsonFile: File, pngFile: File) {
 
 export const atlasStore = {
   state,
+  getCurrentPack,
   addFiles,
   select,
   removeSelected,
+  removeImage,
   clearAll,
   runPack,
   exportPublish,
   reverseFromFiles,
   setAlgorithm(id: PackAlgorithmId) {
     state.algorithm = id
+  },
+  setMaxAtlasEdge(raw: number) {
+    state.maxAtlasEdge = clampMaxEdge(raw)
+  },
+  setActiveSheetIndex(i: number) {
+    const n = state.packSheets.length
+    if (n === 0) return
+    state.activeSheetIndex = Math.min(Math.max(0, Math.floor(i)), n - 1)
   },
 }
