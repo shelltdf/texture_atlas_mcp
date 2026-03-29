@@ -16,3 +16,17 @@
 | 打包算法 | `frontend-vue/src/lib/packing.ts` |
 | 导出/逆向 | `frontend-vue/src/lib/atlasIo.ts` |
 | 清单类型 | `frontend-vue/src/lib/manifest.ts` |
+
+## atlasStore 画布与辅助线（与 `spec.md` 一致）
+
+| 状态字段 | 说明 |
+|----------|------|
+| `maxAtlasWidth` / `maxAtlasHeight` | 单张上限（各 `clampAtlasDimension`，64～16384，默认 4096） |
+| `canvasHelperShowGrid` | 辅助网格 |
+| `canvasHelperShowMaxBounds` | 紫色单张上限框 |
+| `canvasHelperShowOutputBounds` | 橙色当前页输出框 |
+| `canvasHelperShowSpriteBounds` | 图块描边（青/黑） |
+| `canvasHelperStrokePx` | 辅助线线宽（纹理 px，1～128），默认随上限同步规则见 `spec.md` |
+| `canvasHelperGridStep` | 网格步长（纹理 px，8～512） |
+| `selectedId` | 当前选中图块 id；金框独立绘制 |
+| `canvasRecenterTick` / `canvasRecenterImageId` | 列表双击触发画布居中目标 |

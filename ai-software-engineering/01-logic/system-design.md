@@ -17,7 +17,7 @@ flowchart LR
   EX --> RV
 ```
 
-- **WinShell_UI**：菜单/工具栏/状态栏/Dock/画布呈现与用户事件。
+- **WinShell_UI**：菜单/工具栏/状态栏/Dock/画布呈现与用户事件；画布内支持平移缩放、多页总览、**分项辅助线**与选中高亮（实现见 `CanvasArea.vue` + `atlasStore`）。
 - **ResourceManager**：维护图片列表、选中、缩略图与基本属性。
 - **PackEngine**：根据所选算法计算布局，回写画布尺寸与精灵矩形。
 - **ExportService**：离屏渲染图集、触发 JSON/PNG 下载。

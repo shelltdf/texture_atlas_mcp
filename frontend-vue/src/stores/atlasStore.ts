@@ -2,7 +2,8 @@ import { computed, reactive } from 'vue'
 import {
   type PackAlgorithmId,
   type PackResult,
-  clampMaxEdge,
+  clampAtlasDimension,
+  clampBounds,
   DEFAULT_MAX_ATLAS_EDGE,
   packWithAlgorithmSheets,
 } from '../lib/packing'
@@ -63,12 +64,25 @@ const state = reactive({
   images: [] as AtlasImageEntry[],
   selectedId: null as string | null,
   algorithm: 'rows' as PackAlgorithmId,
-  /** 单张图集允许的最大宽/高（正方形上限），用户可改 */
-  maxAtlasEdge: DEFAULT_MAX_ATLAS_EDGE,
+  /** 单张图集允许的最大宽、高（独立），用户可改 */
+  maxAtlasWidth: DEFAULT_MAX_ATLAS_EDGE,
+  maxAtlasHeight: DEFAULT_MAX_ATLAS_EDGE,
+  /** 画布：各类辅助线独立开关（选中金框不属辅助线，始终可按选中状态绘制） */
+  canvasHelperShowGrid: true,
+  canvasHelperShowMaxBounds: true,
+  canvasHelperShowOutputBounds: true,
+  canvasHelperShowSpriteBounds: true,
+  /** 画布：辅助线线宽（纹理像素），最小 1；随单张上限 max(W,H) 变更时自动设为 round(max/256) 与 1 取大 */
+  canvasHelperStrokePx: Math.max(1, Math.round(DEFAULT_MAX_ATLAS_EDGE / 256)),
+  /** 画布：辅助网格步长（纹理像素） */
+  canvasHelperGridStep: 64,
   packSheets: [] as PackResult[],
   activeSheetIndex: 0,
   packError: '' as string,
   statusMessage: '就绪',
+  /** 双击列表：画布将尝试居中到该图（由 CanvasArea 消费） */
+  canvasRecenterTick: 0,
+  canvasRecenterImageId: null as string | null,
 })
 
 const idToEntry = computed(() => {
@@ -91,6 +105,12 @@ function clearPacks() {
 
 function setStatus(msg: string) {
   state.statusMessage = msg
+}
+
+/** 与单张最大宽/高联动：辅助线线宽（px）= max(W,H)/256，至少 1 */
+function syncCanvasHelperStrokeFromMaxBounds() {
+  const mx = Math.max(state.maxAtlasWidth, state.maxAtlasHeight)
+  state.canvasHelperStrokePx = Math.max(1, Math.round(mx / 256))
 }
 
 function addFiles(files: FileList | File[]) {
@@ -149,15 +169,21 @@ function runPack() {
   }
   try {
     const items = state.images.map((e) => ({ id: e.id, w: e.width, h: e.height }))
-    const maxEdge = clampMaxEdge(state.maxAtlasEdge)
-    state.maxAtlasEdge = maxEdge
-    const sheets = packWithAlgorithmSheets(state.algorithm, items, maxEdge)
+    const w0 = state.maxAtlasWidth
+    const h0 = state.maxAtlasHeight
+    const b = clampBounds(w0, h0)
+    state.maxAtlasWidth = b.maxW
+    state.maxAtlasHeight = b.maxH
+    if (b.maxW !== w0 || b.maxH !== h0) {
+      syncCanvasHelperStrokeFromMaxBounds()
+    }
+    const sheets = packWithAlgorithmSheets(state.algorithm, items, b)
     state.packSheets = sheets
     state.activeSheetIndex = 0
     const cur = getCurrentPack()
     const dim = cur ? `${cur.width}×${cur.height}` : '—'
     setStatus(
-      `打包完成：共 ${sheets.length} 张图集，当前页码 ${state.activeSheetIndex} · ${dim}（${state.algorithm}，单张最大边 ${maxEdge}px）`,
+      `打包完成：共 ${sheets.length} 张图集，当前页码 ${state.activeSheetIndex} · ${dim}（${state.algorithm}，单张上限 ${b.maxW}×${b.maxH}）`,
     )
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -170,10 +196,9 @@ function renderSheetCanvas(pack: PackResult): HTMLCanvasElement {
   const c = document.createElement('canvas')
   c.width = pack.width
   c.height = pack.height
-  const ctx = c.getContext('2d')
+  const ctx = c.getContext('2d', { alpha: true })
   if (!ctx) throw new Error('Canvas 不可用')
-  ctx.fillStyle = '#1a1a1e'
-  ctx.fillRect(0, 0, c.width, c.height)
+  ctx.clearRect(0, 0, c.width, c.height)
   for (const p of pack.placements) {
     const entry = idToEntry.value.get(p.id)
     if (!entry) continue
@@ -255,12 +280,50 @@ export const atlasStore = {
   setAlgorithm(id: PackAlgorithmId) {
     state.algorithm = id
   },
-  setMaxAtlasEdge(raw: number) {
-    state.maxAtlasEdge = clampMaxEdge(raw)
+  setMaxAtlasWidth(raw: number) {
+    const next = clampAtlasDimension(raw)
+    if (next === state.maxAtlasWidth) return
+    state.maxAtlasWidth = next
+    syncCanvasHelperStrokeFromMaxBounds()
+  },
+  setMaxAtlasHeight(raw: number) {
+    const next = clampAtlasDimension(raw)
+    if (next === state.maxAtlasHeight) return
+    state.maxAtlasHeight = next
+    syncCanvasHelperStrokeFromMaxBounds()
+  },
+  setCanvasHelperShowGrid(v: boolean) {
+    state.canvasHelperShowGrid = v
+  },
+  setCanvasHelperShowMaxBounds(v: boolean) {
+    state.canvasHelperShowMaxBounds = v
+  },
+  setCanvasHelperShowOutputBounds(v: boolean) {
+    state.canvasHelperShowOutputBounds = v
+  },
+  setCanvasHelperShowSpriteBounds(v: boolean) {
+    state.canvasHelperShowSpriteBounds = v
+  },
+  setCanvasHelperStrokePx(raw: number) {
+    const v = Math.round(Number(raw))
+    if (!Number.isFinite(v)) return
+    state.canvasHelperStrokePx = Math.min(128, Math.max(1, v))
+  },
+  setCanvasHelperGridStep(raw: number) {
+    const v = Math.floor(Number(raw))
+    if (!Number.isFinite(v)) return
+    state.canvasHelperGridStep = Math.min(512, Math.max(8, v))
   },
   setActiveSheetIndex(i: number) {
     const n = state.packSheets.length
     if (n === 0) return
     state.activeSheetIndex = Math.min(Math.max(0, Math.floor(i)), n - 1)
+  },
+  requestCanvasRecenterOnImage(id: string) {
+    state.canvasRecenterImageId = id
+    state.canvasRecenterTick++
+  },
+  clearCanvasRecenterRequest() {
+    state.canvasRecenterImageId = null
   },
 }

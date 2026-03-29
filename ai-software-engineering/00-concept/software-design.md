@@ -10,7 +10,7 @@
 ## 与实现对应
 
 - 实现子项目位于仓库根目录 `frontend-vue/`（Vite + Vue 3 + TypeScript）。
-- 状态可在组合式函数或轻量 store 模块中集中管理，避免过度框架化。
+- 应用状态集中在 `frontend-vue/src/stores/atlasStore.ts`（`reactive`），画布预览与辅助线分项开关、打包结果、导出/逆向入口均经该 store 与组件协作完成。
 
 ## 依赖
 

@@ -29,3 +29,5 @@ classDiagram
     SpriteRect[] sprites
   }
 ```
+
+实现中 `AtlasImageEntry` 另含运行时字段 `img: HTMLImageElement`（仅内存，不写入导出清单）。

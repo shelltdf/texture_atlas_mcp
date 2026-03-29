@@ -18,11 +18,16 @@ function onAlgo(ev: Event) {
   atlasStore.setAlgorithm(v)
 }
 
-function onMaxEdgeChange(ev: Event) {
+function onMaxWidthChange(ev: Event) {
   const el = ev.target as HTMLInputElement
-  const v = parseInt(el.value, 10)
-  atlasStore.setMaxAtlasEdge(Number.isFinite(v) ? v : 4096)
-  el.value = String(atlasStore.state.maxAtlasEdge)
+  atlasStore.setMaxAtlasWidth(parseInt(el.value, 10))
+  el.value = String(atlasStore.state.maxAtlasWidth)
+}
+
+function onMaxHeightChange(ev: Event) {
+  const el = ev.target as HTMLInputElement
+  atlasStore.setMaxAtlasHeight(parseInt(el.value, 10))
+  el.value = String(atlasStore.state.maxAtlasHeight)
 }
 
 function startReverse() {
@@ -56,26 +61,43 @@ async function onPng(ev: Event) {
   <div class="atlas-panel">
     <div class="win-panel-title">Atlas 图集</div>
     <div class="inner">
-      <label class="field">
-        <span>单张最大边长 (px)</span>
-        <input
-          type="number"
-          class="win-input"
-          :value="atlasStore.state.maxAtlasEdge"
-          min="64"
-          max="16384"
-          step="1"
-          title="单张图集允许的宽高上限；超出则自动拆成多张图集"
-          @change="onMaxEdgeChange"
-        />
-      </label>
+      <div class="field-row">
+        <label class="field half">
+          <span>单张最大宽 (px)</span>
+          <input
+            type="number"
+            class="win-input"
+            :value="atlasStore.state.maxAtlasWidth"
+            min="64"
+            max="16384"
+            step="1"
+            title="单张图集最大宽度；与高度独立"
+            @change="onMaxWidthChange"
+          />
+        </label>
+        <label class="field half">
+          <span>单张最大高 (px)</span>
+          <input
+            type="number"
+            class="win-input"
+            :value="atlasStore.state.maxAtlasHeight"
+            min="64"
+            max="16384"
+            step="1"
+            title="单张图集最大高度；与宽度独立"
+            @change="onMaxHeightChange"
+          />
+        </label>
+      </div>
       <label class="field">
         <span>打包算法</span>
         <select class="win-select" :value="atlasStore.state.algorithm" @change="onAlgo">
           <option v-for="a in algorithms" :key="a.id" :value="a.id">{{ a.label }}</option>
         </select>
       </label>
-      <p class="tip sheet-hint">多页时请在<strong>画布标题栏</strong>翻页或使用「全部总览」查看竖向总排版。</p>
+      <p class="tip sheet-hint">
+        多页时请在<strong>画布标题栏</strong>翻页或使用「全部总览」。画布上可分项开关<strong>辅助线</strong>（网格、单张上限、输出边界、图块描边），并调节<strong>线宽 (px)</strong>与<strong>网格步长</strong>。
+      </p>
       <div class="err" v-if="atlasStore.state.packError">{{ atlasStore.state.packError }}</div>
       <div class="btns">
         <button type="button" class="win-btn" @click="atlasStore.runPack()">运行打包</button>
@@ -108,12 +130,20 @@ async function onPng(ev: Event) {
   flex-direction: column;
   gap: 8px;
 }
+.field-row {
+  display: flex;
+  gap: 8px;
+}
 .field {
   display: flex;
   flex-direction: column;
   gap: 4px;
   font-size: 11px;
   color: #444;
+}
+.field.half {
+  flex: 1;
+  min-width: 0;
 }
 .win-input {
   font-family: inherit;
@@ -124,6 +154,15 @@ async function onPng(ev: Event) {
   background: #fff;
   width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
+}
+.win-select {
+  font-family: inherit;
+  font-size: 12px;
+  height: 23px;
+  border: 1px solid var(--win-border-dark, #707070);
+  background: #fff;
+  width: 100%;
   box-sizing: border-box;
 }
 .sheet-hint {

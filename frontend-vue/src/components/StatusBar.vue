@@ -20,7 +20,7 @@ const sheetInfo = computed(() => {
       画布: {{ sheetInfo.w }}×{{ sheetInfo.h }}（页码 {{ sheetInfo.pageIdx }} / {{ sheetInfo.total }}）
     </span>
     <span class="cell" v-else>画布: —</span>
-    <span class="cell">上限: {{ atlasStore.state.maxAtlasEdge }}px</span>
+    <span class="cell">上限: {{ atlasStore.state.maxAtlasWidth }}×{{ atlasStore.state.maxAtlasHeight }}</span>
     <span class="cell">算法: {{ atlasStore.state.algorithm }}</span>
   </div>
 </template>

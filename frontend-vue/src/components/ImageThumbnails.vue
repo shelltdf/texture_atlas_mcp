@@ -27,6 +27,11 @@ function deleteCtxTarget() {
   if (id) atlasStore.removeImage(id)
 }
 
+function onDblClick(id: string) {
+  atlasStore.select(id)
+  atlasStore.requestCanvasRecenterOnImage(id)
+}
+
 function onGlobalPointerDown(e: MouseEvent) {
   const t = e.target as Node
   const el = document.querySelector('.ctx-menu-host')
@@ -61,6 +66,7 @@ onUnmounted(() => {
         class="item"
         :class="{ on: atlasStore.state.selectedId === im.id }"
         @click="atlasStore.select(im.id)"
+        @dblclick.prevent="onDblClick(im.id)"
         @contextmenu="openCtx(im.id, $event)"
       >
         <img :src="im.thumbDataUrl" class="thumb" alt="" />

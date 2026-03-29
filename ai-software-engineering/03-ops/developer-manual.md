@@ -23,3 +23,8 @@
 ## 发布
 
 - 将 `dist/` 或 `publish/` 内容部署到静态托管即可。
+
+## 与物理规格、映射
+
+- 对外行为与数据字段以 `ai-software-engineering/02-physical/texture-atlas-editor-spa/spec.md` 为准。
+- 主要 UI ↔ 源码路径见同目录 `mapping.md`；`atlasStore` 画布相关字段亦列于该文件。
