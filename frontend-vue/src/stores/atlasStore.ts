@@ -10,14 +10,16 @@ import {
   packWithAlgorithmSheets,
 } from '../lib/packing'
 import {
-  buildManifest,
+  buildManifestDocument,
   canvasToPngBlob,
+  delayBetweenSaveDialogs,
   sanitizeFilename,
   splitAtlasToDownloads,
   triggerDownloadText,
   triggerDownloadBlob,
 } from '../lib/atlasIo'
-import { parseManifestJson } from '../lib/manifest'
+import { parseManifestJson, sheetToAtlasManifest } from '../lib/manifest'
+import { type AtlasIoFormatId, getFormatDef } from '../lib/formatTargets'
 
 /** 导出图集时可选产物组合 */
 export type AtlasExportMode = 'png+json' | 'png-only' | 'json-only'
@@ -109,6 +111,38 @@ const idToEntry = computed(() => {
   for (const e of state.images) m.set(e.id, e)
   return m
 })
+
+function normalizePngFiles(png: File | File[]): File[] {
+  return Array.isArray(png) ? png : [png]
+}
+
+/** 多页时按文件名排序，使 atlas-00 / atlas-01 与清单页序一致 */
+function orderPngFilesForSheets(files: File[], sheetCount: number): File[] {
+  if (files.length !== sheetCount) {
+    throw new Error(`清单共 ${sheetCount} 页，需要 ${sheetCount} 张 PNG，当前 ${files.length} 张`)
+  }
+  if (sheetCount <= 1) return files
+  return [...files].sort((a, b) =>
+    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
+  )
+}
+
+/** 一次多选：从文件列表中分出 1 个 JSON 与若干 PNG（按扩展名） */
+export function partitionAtlasBundleFiles(files: File[]): { json: File; pngs: File[] } {
+  const jsonFiles = files.filter((f) => /\.json$/i.test(f.name))
+  const pngFiles = files.filter((f) => /\.png$/i.test(f.name) || f.type === 'image/png')
+  if (jsonFiles.length !== 1) {
+    throw new Error(
+      jsonFiles.length === 0
+        ? '请同时选择 1 个 .json 清单与对应 .png 图集（可多选）'
+        : '请只选择 1 个 .json 清单文件',
+    )
+  }
+  if (pngFiles.length === 0) {
+    throw new Error('请至少选择一张 .png 图集')
+  }
+  return { json: jsonFiles[0], pngs: pngFiles }
+}
 
 function getCurrentPack(): PackResult | null {
   const sh = state.packSheets
@@ -238,14 +272,20 @@ function renderSheetCanvas(pack: PackResult): HTMLCanvasElement {
   return c
 }
 
-async function exportPublish(mode: AtlasExportMode = 'png+json') {
+async function exportPublish(mode: AtlasExportMode = 'png+json', jsonFormat: AtlasIoFormatId = 'app-v1') {
   try {
     const sheets = state.packSheets
     if (!sheets.length) throw new Error('请先成功运行打包')
+    const needsJson = mode !== 'png-only'
+    if (needsJson) {
+      const jdef = getFormatDef(jsonFormat)
+      if (!jdef?.implemented) {
+        setStatus('所选 JSON 清单格式尚未实现，请改用「本应用 v1」或等待更新。')
+        return
+      }
+    }
     const pad2 = (n: number) => String(n).padStart(2, '0')
-    for (let i = 0; i < sheets.length; i++) {
-      const pack = sheets[i]
-      const canvas = renderSheetCanvas(pack)
+    const manifestSheets = sheets.map((pack, pageIndex) => {
       const sprites = pack.placements.map((p) => {
         const e = idToEntry.value.get(p.id)
         return {
@@ -257,30 +297,41 @@ async function exportPublish(mode: AtlasExportMode = 'png+json') {
           h: p.h,
         }
       })
-      const manifest = buildManifest(pack.width, pack.height, sprites)
-      const json = JSON.stringify(manifest, null, 2)
+      return {
+        index: pageIndex,
+        width: pack.width,
+        height: pack.height,
+        sprites,
+      }
+    })
+    const manifestDoc = buildManifestDocument(manifestSheets)
+    const jsonText = JSON.stringify(manifestDoc, null, 2)
+
+    if (mode !== 'png-only') {
+      triggerDownloadText(jsonText, 'atlas.json')
+      if (mode !== 'json-only' && sheets.length > 0) await delayBetweenSaveDialogs()
+    }
+    for (let i = 0; i < sheets.length; i++) {
+      if (mode === 'json-only') break
+      const pack = sheets[i]
+      const canvas = renderSheetCanvas(pack)
       const suffix = sheets.length > 1 ? `-${pad2(i)}` : ''
-      if (mode !== 'png-only') {
-        triggerDownloadText(json, `atlas${suffix}.json`)
-      }
-      if (mode !== 'json-only') {
-        const blob = await canvasToPngBlob(canvas)
-        triggerDownloadBlob(blob, `atlas${suffix}.png`)
-      }
-      if (i < sheets.length - 1) {
-        await new Promise((r) => setTimeout(r, 280))
-      }
+      const blob = await canvasToPngBlob(canvas)
+      triggerDownloadBlob(blob, `atlas${suffix}.png`)
+      if (i < sheets.length - 1) await delayBetweenSaveDialogs()
     }
     if (mode === 'png+json') {
       setStatus(
         sheets.length > 1
-          ? `已下载 ${sheets.length} 组 atlas-00.json / png 起（页码从 0）`
+          ? `已下载 atlas.json（含 ${sheets.length} 页）与 atlas-00.png～atlas-${pad2(sheets.length - 1)}.png`
           : '已下载 atlas.json 与 atlas.png',
       )
     } else if (mode === 'png-only') {
       setStatus(sheets.length > 1 ? `已下载 ${sheets.length} 张 atlas-00.png 起` : '已下载 atlas.png')
     } else {
-      setStatus(sheets.length > 1 ? `已下载 ${sheets.length} 份 atlas-00.json 起` : '已下载 atlas.json')
+      setStatus(
+        sheets.length > 1 ? `已下载 atlas.json（含 ${sheets.length} 页）` : '已下载 atlas.json',
+      )
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
@@ -288,64 +339,81 @@ async function exportPublish(mode: AtlasExportMode = 'png+json') {
   }
 }
 
-/** 将本应用清单 + PNG 图集拆成子图并加入左侧列表（不触发下载） */
-async function importAtlasIntoList(jsonFile: File, pngFile: File) {
-  const text = await jsonFile.text()
-  const manifest = parseManifestJson(text)
-  const url = URL.createObjectURL(pngFile)
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve()
-    img.onerror = () => reject(new Error('无法加载图集 PNG'))
-    img.src = url
-  })
-  try {
-    if (img.naturalWidth !== manifest.width || img.naturalHeight !== manifest.height) {
-      throw new Error(
-        `图片尺寸 ${img.naturalWidth}×${img.naturalHeight} 与清单 ${manifest.width}×${manifest.height} 不一致`,
-      )
-    }
-    const c = document.createElement('canvas')
-    const ctx = c.getContext('2d')
-    if (!ctx) throw new Error('无法创建 Canvas 上下文')
-    let n = 0
-    for (const sp of manifest.sprites) {
-      c.width = sp.w
-      c.height = sp.h
-      ctx.clearRect(0, 0, sp.w, sp.h)
-      ctx.drawImage(img, sp.x, sp.y, sp.w, sp.h, 0, 0, sp.w, sp.h)
-      const blob = await canvasToPngBlob(c)
-      const base = sanitizeFilename(sp.name.replace(/\.[^.]+$/, '') || sp.id)
-      const file = new File([blob], `${base}.png`, { type: 'image/png' })
-      const e = await fileToEntry(file)
-      state.images.push(e)
-      n++
-    }
-    clearPacks()
-    setStatus(`已从图集导入 ${n} 张子图到列表`)
-  } finally {
-    URL.revokeObjectURL(url)
+/** 将清单 + PNG（单张或多张，与页数一致）拆成子图并加入左侧列表（不触发下载） */
+async function importAtlasIntoList(jsonFile: File, pngFile: File | File[], format: AtlasIoFormatId = 'app-v1') {
+  const fdef = getFormatDef(format)
+  if (!fdef?.implemented) {
+    throw new Error('所选清单格式尚未实现，请改用「本应用 v1」或等待更新。')
   }
+  const text = await jsonFile.text()
+  const doc = parseManifestJson(text)
+  const pngList = orderPngFilesForSheets(normalizePngFiles(pngFile), doc.sheets.length)
+  const c = document.createElement('canvas')
+  const ctx = c.getContext('2d')
+  if (!ctx) throw new Error('无法创建 Canvas 上下文')
+  for (let si = 0; si < doc.sheets.length; si++) {
+    const sh = doc.sheets[si]
+    const url = URL.createObjectURL(pngList[si])
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error(`无法加载第 ${sh.index} 页图集 PNG`))
+      img.src = url
+    })
+    try {
+      if (img.naturalWidth !== sh.width || img.naturalHeight !== sh.height) {
+        throw new Error(
+          `第 ${sh.index} 页：图片尺寸 ${img.naturalWidth}×${img.naturalHeight} 与清单 ${sh.width}×${sh.height} 不一致`,
+        )
+      }
+      for (const sp of sh.sprites) {
+        c.width = sp.w
+        c.height = sp.h
+        ctx.clearRect(0, 0, sp.w, sp.h)
+        ctx.drawImage(img, sp.x, sp.y, sp.w, sp.h, 0, 0, sp.w, sp.h)
+        const blob = await canvasToPngBlob(c)
+        const base = sanitizeFilename(sp.name.replace(/\.[^.]+$/, '') || sp.id)
+        const file = new File([blob], `${base}.png`, { type: 'image/png' })
+        const e = await fileToEntry(file)
+        state.images.push(e)
+      }
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+  runPack()
 }
 
-async function reverseFromFiles(jsonFile: File, pngFile: File) {
-  const text = await jsonFile.text()
-  const manifest = parseManifestJson(text)
-  const url = URL.createObjectURL(pngFile)
-  const img = new Image()
-  img.crossOrigin = 'anonymous'
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve()
-    img.onerror = () => reject(new Error('无法加载图集 PNG'))
-    img.src = url
-  })
-  try {
-    await splitAtlasToDownloads(img, manifest)
-    setStatus(`已按清单拆分 ${manifest.sprites.length} 张`)
-  } finally {
-    URL.revokeObjectURL(url)
+async function reverseFromFiles(jsonFile: File, pngFile: File | File[], format: AtlasIoFormatId = 'app-v1') {
+  const fdef = getFormatDef(format)
+  if (!fdef?.implemented) {
+    throw new Error('所选清单格式尚未实现，请改用「本应用 v1」或等待更新。')
   }
+  const text = await jsonFile.text()
+  const doc = parseManifestJson(text)
+  const pngList = orderPngFilesForSheets(normalizePngFiles(pngFile), doc.sheets.length)
+  let totalSprites = 0
+  for (let si = 0; si < doc.sheets.length; si++) {
+    const sh = doc.sheets[si]
+    const url = URL.createObjectURL(pngList[si])
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error(`无法加载第 ${sh.index} 页图集 PNG`))
+      img.src = url
+    })
+    try {
+      const m = sheetToAtlasManifest(sh)
+      await splitAtlasToDownloads(img, m)
+      totalSprites += m.sprites.length
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+    if (si < doc.sheets.length - 1) await delayBetweenSaveDialogs()
+  }
+  setStatus(`已按清单拆分 ${totalSprites} 张`)
 }
 
 export const atlasStore = {
@@ -361,6 +429,15 @@ export const atlasStore = {
   exportPublish,
   importAtlasIntoList,
   reverseFromFiles,
+  /** 一次多选 json + png(s) 后调用 */
+  async importAtlasFromBundle(files: File[], format: AtlasIoFormatId = 'app-v1') {
+    const { json, pngs } = partitionAtlasBundleFiles(files)
+    await importAtlasIntoList(json, pngs, format)
+  },
+  async reverseFromBundle(files: File[], format: AtlasIoFormatId = 'app-v1') {
+    const { json, pngs } = partitionAtlasBundleFiles(files)
+    await reverseFromFiles(json, pngs, format)
+  },
   setAlgorithm(id: PackAlgorithmId) {
     state.algorithm = id
   },

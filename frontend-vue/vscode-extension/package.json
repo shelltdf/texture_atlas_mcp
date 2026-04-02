@@ -2,7 +2,7 @@
   "name": "texture-atlas-editor",
   "displayName": "TextureAtlas",
   "description": "纹理图集编辑器：内置 Webview 预览、MCP 配套（与 frontend-vue / mcp-server 一致）",
-  "version": "0.0.13",
+  "version": "0.0.18",
   "publisher": "local",
   "private": true,
   "scripts": {},

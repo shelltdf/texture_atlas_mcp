@@ -1,4 +1,4 @@
-import type { AtlasManifest, SpriteRect } from './manifest'
+import type { AtlasManifest, AtlasManifestDocument, ManifestSheet, SpriteRect } from './manifest'
 import { MANIFEST_VERSION } from './manifest'
 
 export function buildManifest(
@@ -9,6 +9,11 @@ export function buildManifest(
   return { version: MANIFEST_VERSION, width, height, sprites }
 }
 
+/** v1：一个 JSON 内包含全部页面 */
+export function buildManifestDocument(sheets: ManifestSheet[]): AtlasManifestDocument {
+  return { version: MANIFEST_VERSION, sheets }
+}
+
 export function triggerDownloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -16,6 +21,13 @@ export function triggerDownloadBlob(blob: Blob, filename: string): void {
   a.download = filename
   a.click()
   URL.revokeObjectURL(url)
+}
+
+/** 两次「另存为」之间的间隔（ms），避免浏览器同时弹出多个保存对话框 */
+export const SAVE_DIALOG_STAGGER_MS = 650
+
+export function delayBetweenSaveDialogs(ms: number = SAVE_DIALOG_STAGGER_MS): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
 }
 
 export function triggerDownloadText(text: string, filename: string): void {
@@ -44,7 +56,8 @@ export async function splitAtlasToDownloads(
   const c = document.createElement('canvas')
   const ctx = c.getContext('2d')
   if (!ctx) throw new Error('无法创建 Canvas 上下文')
-  for (const sp of manifest.sprites) {
+  for (let i = 0; i < manifest.sprites.length; i++) {
+    const sp = manifest.sprites[i]
     c.width = sp.w
     c.height = sp.h
     ctx.clearRect(0, 0, sp.w, sp.h)
@@ -52,5 +65,8 @@ export async function splitAtlasToDownloads(
     const blob = await canvasToPngBlob(c)
     const base = sanitizeFilename(sp.name.replace(/\.[^.]+$/, '') || sp.id)
     triggerDownloadBlob(blob, `${base}.png`)
+    if (i < manifest.sprites.length - 1) {
+      await delayBetweenSaveDialogs()
+    }
   }
 }

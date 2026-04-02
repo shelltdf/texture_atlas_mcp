@@ -12,7 +12,8 @@
 | 属性区 | `frontend-vue/src/components/ImagePropertyPanel.vue` |
 | 缩略图列表 | `frontend-vue/src/components/ImageThumbnails.vue` |
 | 打包图集面板 | `frontend-vue/src/components/AtlasPanel.vue` |
-| 图集格式对话框（导入/导出/逆向） | `frontend-vue/src/components/AtlasDialogsHost.vue`、`frontend-vue/src/atlasDialogsState.ts` |
+| 图集格式对话框（导入/导出/逆向） | `frontend-vue/src/components/AtlasDialogsHost.vue`、`frontend-vue/src/atlasDialogsState.ts`；导入/逆向为单次多选 json+png（`importAtlasFromBundle` / `reverseFromBundle`） |
+| 导入/导出可选清单格式（业界对齐 ID 列表） | `frontend-vue/src/lib/formatTargets.ts` |
 | 图集预览区（CanvasArea） | `frontend-vue/src/components/CanvasArea.vue` |
 | 应用状态 | `frontend-vue/src/stores/atlasStore.ts` |
 | 打包算法 | `frontend-vue/src/lib/packing.ts` |

@@ -53,28 +53,61 @@ export default {
       'Different outputs for different uses; if extensions match (.json), pick the type here first.',
     importTitle: 'Import atlas — choose format',
     importHint:
-      'Choose format before files. Many tools use .json / .png — extension alone is ambiguous.',
+      'In the file dialog, multi-select in one go: one atlas.json plus one PNG per page (select all atlas-00.png, atlas-01.png… for multi-page). Packing runs automatically and the canvas shows the atlas.',
     reverseTitle: 'Unpack / split — choose format',
     reverseHint:
-      'Unlike import: downloads multiple PNGs; does not add to the left list.',
+      'Unlike import: multi-select json + png(s); downloads many sprite PNGs; not added to the list.',
     cancel: 'Cancel',
     ok: 'OK',
-    nextFiles: 'Next: choose files…',
+    nextFiles: 'Next: choose files (multi-select)…',
     appV1Title: 'This app v1: manifest JSON + atlas PNG',
     importV1Desc:
       'Matches Export. Adds sprites to the image list for further editing.',
     reverseV1Desc: 'Cut sprites from the atlas using sprites rects.',
+    formatJsonSection: 'Manifest format (industry-aligned)',
+    formatJsonHint:
+      'The editor uses one internal rect list; the manifest file is written in the format you pick. Unsupported items are marked “coming soon”.',
     importNote:
-      'Other engines/tools may be added later; use pairs exported from this app.',
-    reverseNote: 'To edit in the app, use toolbar “Import atlas”.',
+      'No proprietary atlas “standard” is required: third-party formats are the interchange targets. Only “This app v1” JSON pairs with PNG today.',
+    reverseNote:
+      'To load sprites into the editor, use toolbar “Import atlas”. Unimplemented manifest formats cannot unpack.',
+  },
+  formatsIo: {
+    notImplemented: 'This manifest format is not implemented yet. Choose “This app v1” or wait for an update.',
+    comingSoon: 'Coming soon',
+    appV1: {
+      title: 'This app v1 (JSON)',
+      desc: 'Pairs with Export: single atlas.json (sheets[] when multi-page) + PNG per page.',
+    },
+    tpHash: {
+      title: 'TexturePacker (hash)',
+      desc: 'JSON with frames as an object keyed by sprite name; common TexturePacker output.',
+    },
+    tpArray: {
+      title: 'TexturePacker (array)',
+      desc: 'JSON with frames as an array; pick the variant your tool exports.',
+    },
+    libgdx: {
+      title: 'LibGDX (.atlas text)',
+      desc: 'Text atlas next to the PNG; common in LibGDX and related tools.',
+    },
+    cocos2d: {
+      title: 'Cocos2d (plist)',
+      desc: 'XML plist with frames, etc.; pairs with one atlas PNG.',
+    },
+    pixi: {
+      title: 'Pixi (spritesheet JSON / multi)',
+      desc: 'JSON spritesheet / multi-texture layouts; aligns with typical Pixi pipelines.',
+    },
   },
   exportModes: {
     pngJsonTitle: 'PNG atlas + JSON manifest',
-    pngJsonDesc: 'Works with Import / Unpack here; includes version, size, sprites rects.',
+    pngJsonDesc:
+      'Single atlas.json (all pages in sheets) + one PNG per page; matches Import / Unpack here.',
     pngOnlyTitle: 'PNG atlas only',
     pngOnlyDesc: 'Bitmap only (multiple files if multi-page); no coordinate file.',
     jsonOnlyTitle: 'JSON manifest only',
-    jsonOnlyDesc: 'Layout data only; no atlas image.',
+    jsonOnlyDesc: 'Single atlas.json only (all pages in sheets); no bitmap.',
   },
   atlasPanel: {
     title: 'Pack atlas',
@@ -188,7 +221,7 @@ export default {
     close: 'Close',
     fNoCustomFormatTitle: 'Why this app does not use a proprietary format',
     fNoCustomFormatBody:
-      'Maintaining a separate format stack is unnecessary: many existing formats already work well for metadata and bitmaps. Atlas data is simple; generic manifests and images are enough, without heavy compatibility concerns.',
+      'The editor keeps one internal rect list and prefers third-party manifests (TexturePacker, LibGDX, plist, Pixi, etc.) for interchange—no need for a home-grown proprietary “standard”; add adapters as needed.',
     fImportTitle: 'Import (for packing)',
     fImportBody:
       'Raster images the browser can decode (input accepts image/*). Common: PNG, JPEG/WebP, GIF (first frame), BMP; AVIF if supported. Same idea as dropping PNG/JPG into TexturePacker or engines.',
@@ -196,7 +229,7 @@ export default {
     fExportP1:
       'Atlas bitmap: PNG (RGBA), atlas.png or atlas-00.png, atlas-01.png…',
     fExportP2:
-      'Manifest: JSON (UTF-8) with version, size, sprites[]. Generic interchange — not Spine/Unity proprietary formats.',
+      'Manifest: one JSON (UTF-8), version 1; multi-page uses sheets[] (index, size, sprites per page). Single-page legacy top-level width/height/sprites still accepted on import.',
     fReverseTitle: 'Unpack / reverse',
     fReverseBody:
       'Needs JSON + PNG from the same export; atlas image must be PNG. If you only have JPEG/WebP, convert to PNG with matching pixel size to width/height in JSON.',

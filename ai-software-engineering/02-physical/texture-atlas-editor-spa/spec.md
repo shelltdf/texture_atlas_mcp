@@ -9,18 +9,19 @@
 
 ## 清单 JSON（version 1）
 
+**权威结构（导出始终使用）**：单个 `atlas.json`，根对象含 `version: 1` 与 **`sheets` 数组**；每一页一项：
+
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| version | number | 固定 `1` |
-| width | number | 图集宽，正整数 |
-| height | number | 图集高，正整数 |
-| sprites | array | 精灵列表 |
+| sheets | array | 多页图集的全部页面 |
+| sheets[].index | number | 页码，从 `0` 起，与 `atlas-00.png` 等文件名序号一致 |
+| sheets[].width / height | number | 该页图集像素尺寸 |
+| sheets[].sprites | array | 该页内精灵矩形列表 |
 | sprites[].id | string | 唯一 id |
 | sprites[].name | string | 显示名/文件名 |
-| sprites[].x | number | 左上角 x |
-| sprites[].y | number | 左上角 y |
-| sprites[].w | number | 宽 |
-| sprites[].h | number | 高 |
+| sprites[].x, y, w, h | number | 左上角与宽高（像素） |
+
+**兼容导入（旧版单页）**：若无 `sheets`，但存在顶层 `width`、`height`、`sprites`，则视为仅一页（`index === 0`）。解析实现见 `frontend-vue/src/lib/manifest.ts` 中 `parseManifestJson`。
 
 ## 打包算法 ID
 
@@ -48,19 +49,23 @@
 ## 导出
 
 - UI **导出图集**须先选择产物类型：`png+json`（默认）、`png-only`、`json-only`；避免与「仅 JSON」类混淆。
-- PNG：与清单 `width`×`height` 一致，**RGBA 透明底**（未占用像素 alpha=0），精灵按清单矩形从源图绘制（保留素材 alpha）。
-- **单页**：`atlas.png`、`atlas.json`（在 `png+json` 模式下）。
-- **多页**：`atlas-00.png` / `atlas-00.json`、`atlas-01.*` …（两位序号，**从 0 起**与页码一致）；各页清单仅描述该页内精灵。
+- **含 JSON 时**（`png+json` / `json-only`）须再选**清单目标格式**（与业界工具对齐的选项列表，见前端 `formatTargets.ts`）：当前仅 **本应用 v1 JSON** 已实现；其余为占位，选中后导出应提示未实现或禁用选择。
+- PNG：每页与对应 `sheets[i].width`×`sheets[i].height` 一致，**RGBA 透明底**（未占用像素 alpha=0），精灵按该页 `sprites` 矩形从源图绘制（保留素材 alpha）。
+- **清单文件**：**仅一个** `atlas.json`，包含全部页的 `sheets`（见上表）。
+- **单页**（`png+json`）：`atlas.json` + `atlas.png`。
+- **多页**（`png+json`）：`atlas.json` + `atlas-00.png`、`atlas-01.png`…（两位序号从 0 起，与 `sheets[].index` 一致）。
+- **保存对话框**：每个文件依次触发浏览器下载/「另存为」，文件之间插入约 **650ms** 间隔（`atlasIo.SAVE_DIALOG_STAGGER_MS`），避免同时弹出多个对话框。
 
 ## 导入图集到列表
 
-- **导入图集**（与「逆向拆分」区分）：在确认格式为「本应用 v1：JSON + PNG」后，按清单裁切子图并 **加入左侧图片列表**（`importAtlasIntoList`），不触发浏览器批量下载子图。
+- **导入图集**（与「逆向拆分」区分）：在对话框中选择**清单来源格式**，再在系统文件框中 **一次多选** `atlas.json` 与全部页面对应的 PNG（张数须等于 `sheets.length`；按扩展名识别，且仅允许 1 个 `.json`）。当前仅 **本应用 v1** 已实现；其余格式占位。
+- 按清单逐页裁切子图并 **加入左侧图片列表**（`importAtlasIntoList` / `importAtlasFromBundle`），不触发浏览器批量下载子图；成功后 **自动执行「运行打包」**（`runPack`），使图集画布显示预览。
 
 ## 逆向
 
-- 输入：清单 + 同尺寸 PNG。
-- 校验：`image.naturalWidth === width && image.naturalHeight === height`，否则报错。
-- 输出：每张精灵触发下载，文件名 `name` 净化后 + `.png`。
+- 输入：与所选格式一致的清单与 PNG（本应用 v1：**一次多选** 与导入相同：1×`.json` + N×`.png`）。
+- 校验：每一页 `image.naturalWidth === sheets[i].width` 且 `image.naturalHeight === sheets[i].height`，否则报错。
+- 输出：每张精灵依次触发下载（文件名 `name` 净化后 + `.png`），文件之间同上间隔，避免同时弹出多个保存对话框。
 
 ## 退出码（CLI 脚本）
 

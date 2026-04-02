@@ -55,25 +55,60 @@ export default {
     exportHint: '不同用途对应不同产物；后缀相同（如 .json）时需先选类型再选文件。',
     importTitle: '导入图集 — 选择格式',
     importHint:
-      '先选格式再选文件。许多工具都用 .json / .png，仅靠后缀无法区分，请在此确认。',
+      '在文件框中一次多选：1 个 atlas.json + 与页数相同的 PNG（多页时请全选 atlas-00.png、atlas-01.png…）。导入后会自动打包，图集画布显示预览。',
     reverseTitle: '逆向拆分 — 选择格式',
-    reverseHint: '与「导入图集」区分：此处将子图下载为多个 PNG 文件，不加入左侧列表。',
+    reverseHint:
+      '与「导入图集」区分：一次多选 json + png，将子图下载为多个文件，不加入列表。',
     cancel: '取消',
     ok: '确定',
-    nextFiles: '下一步：选文件…',
+    nextFiles: '下一步：选择文件（可多选）…',
     appV1Title: '本应用 v1：清单 JSON + 图集 PNG',
     importV1Desc: '与「导出图集」配套。将子图加入左侧图片列表，可继续编辑、打包。',
     reverseV1Desc: '按 sprites 矩形从图集裁切并逐个保存。',
-    importNote: '其他引擎 / 工具导出的变体后续可扩展；当前请使用本应用导出的文件对。',
-    reverseNote: '若需导入到编辑器继续编辑，请使用工具栏「导入图集」。',
+    formatJsonSection: '清单文件格式（与业界工具对齐）',
+    formatJsonHint:
+      '内部编辑态统一为矩形精灵列表；导出时按所选格式写出清单。未实现项会标注「即将支持」。',
+    importNote:
+      '编辑器不维护独立「专有格式」标准：以第三方常见格式为导入/导出目标，逐步接入。当前仅「本应用 v1」JSON 可与 PNG 配对使用。',
+    reverseNote:
+      '若需导入到编辑器继续编辑，请使用工具栏「导入图集」。未实现的清单格式无法拆包。',
+  },
+  formatsIo: {
+    notImplemented: '该清单格式尚未实现，请选择「本应用 v1」或等待更新。',
+    comingSoon: '即将支持',
+    appV1: {
+      title: '本应用 v1（JSON）',
+      desc: '与「导出图集」配套：单文件 atlas.json（多页为 sheets[]），与每页 PNG 成对。',
+    },
+    tpHash: {
+      title: 'TexturePacker（hash）',
+      desc: 'JSON，frames 为对象、以精灵名为键；常见于 TexturePacker 等工具导出。',
+    },
+    tpArray: {
+      title: 'TexturePacker（array）',
+      desc: 'JSON，frames 为数组；与 hash 变体二选一，按工具导出为准。',
+    },
+    libgdx: {
+      title: 'LibGDX（.atlas 文本）',
+      desc: '与同名 PNG 配对的 atlas 描述文件；引擎与工具链常用。',
+    },
+    cocos2d: {
+      title: 'Cocos2d（plist）',
+      desc: 'XML plist，frames 等键；与单张图集 PNG 成对使用。',
+    },
+    pixi: {
+      title: 'Pixi（Spritesheet JSON / multi）',
+      desc: 'JSON 多图或单图精灵表描述；与 Pixi 资源管线常见写法对齐。',
+    },
   },
   exportModes: {
     pngJsonTitle: 'PNG 图集 + JSON 清单',
-    pngJsonDesc: '与本应用「导入图集 / 逆向」配套；含 version、宽高与 sprites 矩形。',
+    pngJsonDesc:
+      '单个 atlas.json（含全部页的 sheets）+ 每页一张 PNG；与「导入图集 / 逆向」配套。',
     pngOnlyTitle: '仅 PNG 图集',
     pngOnlyDesc: '只下载合并后的位图（多页时多文件），无坐标文件。',
     jsonOnlyTitle: '仅 JSON 清单',
-    jsonOnlyDesc: '只下载布局描述，无图集图。',
+    jsonOnlyDesc: '只下载单个 atlas.json（含全部页 sheets），无图集图。',
   },
   atlasPanel: {
     title: '打包图集',
@@ -190,7 +225,7 @@ export default {
     close: '关闭',
     fNoCustomFormatTitle: '本软件不提供自定义格式的原因是',
     fNoCustomFormatBody:
-      '没有必要自己维护一套格式系统；已有大量现有格式可以直接用于描述与交换。图集要承载的信息本身很简单，用通用清单与位图即可，也不存在复杂的兼容性问题。',
+      '编辑器以矩形精灵清单为内部模型，对外优先对齐 TexturePacker、LibGDX、plist、Pixi 等常见第三方格式，无需自造一套「专有标准」。实现上按需增加读/写适配器即可。',
     fImportTitle: '导入素材（打包用）',
     fImportBody:
       '使用浏览器能解码的光栅图片（文件选择器为 image/*）。常见等价格式：PNG、JPEG / JPG、WebP、GIF（显示为动画首帧）、BMP；若浏览器支持 AVIF 等亦可。与 TexturePacker、游戏引擎中拖入 PNG/JPG/WebP 作精灵的用法同类；能否导入以浏览器能否加载为准。',
@@ -198,7 +233,7 @@ export default {
     fExportP1:
       '图集位图：PNG（RGBA 透明底），单页为 atlas.png，多页为 atlas-00.png、atlas-01.png… 与常见「一张大图 + 坐标」工作流一致。',
     fExportP2:
-      '布局清单：JSON（UTF-8），含 version、宽高与 sprites[] 矩形。属于通用数据交换，不是 Spine、Unity SpriteAtlas 等专有格式，需自行对接工具链。',
+      '布局清单：单个 JSON（UTF-8），version 1，多页时含 sheets[]（每页 index、宽高、sprites[] 矩形）；单页兼容旧版顶层的 width/height/sprites。通用数据交换，不是 Spine 等专有格式。',
     fReverseTitle: '逆向拆分',
     fReverseBody:
       '须同时选择与本应用导出一致的 JSON + PNG（同一次导出、尺寸与清单一致）。图集图当前仅支持 PNG 作为逆向输入；若你只有 JPEG/WebP 版大图，需先转为 PNG 且像素尺寸与清单中 width/height 一致。',
