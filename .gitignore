@@ -1,1 +1,6 @@
 /frontend-vue/__pycache__
+/frontend-vue/node_modules/
+/frontend-vue/dist/
+/frontend-vue/publish/
+/frontend-vue/mcp-server/node_modules/
+/.cursor/mcp.json

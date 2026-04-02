@@ -1,0 +1,79 @@
+{
+  "name": "texture-atlas-editor",
+  "displayName": "TextureAtlas",
+  "description": "纹理图集编辑器：内置 Webview 预览、MCP 配套（与 frontend-vue / mcp-server 一致）",
+  "version": "0.0.10",
+  "publisher": "local",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onView:textureAtlas.webview"
+  ],
+  "main": "./extension.cjs",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "textureAtlasActivity",
+          "title": "TextureAtlas",
+          "icon": "media/activity-icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "textureAtlasActivity": [
+        {
+          "type": "webview",
+          "id": "textureAtlas.webview",
+          "name": "TextureAtlas",
+          "contextualTitle": "TextureAtlas"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "textureAtlas.openBuiltIn",
+        "title": "TextureAtlas: Open in Editor",
+        "icon": "$(grid)"
+      },
+      {
+        "command": "textureAtlas.openPreview",
+        "title": "TextureAtlas: Open in Editor",
+        "icon": "$(grid)"
+      },
+      {
+        "command": "textureAtlas.refreshWebview",
+        "title": "TextureAtlas: Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "textureAtlas.showInActivityBar",
+        "title": "TextureAtlas: Show Side Bar"
+      },
+      {
+        "command": "textureAtlas.showMcpInfo",
+        "title": "TextureAtlas: Show MCP Paths"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "textureAtlas.openBuiltIn",
+          "when": "view == textureAtlas.webview",
+          "group": "navigation@1"
+        },
+        {
+          "command": "textureAtlas.refreshWebview",
+          "when": "view == textureAtlas.webview",
+          "group": "navigation@2"
+        }
+      ]
+    }
+  }
+}

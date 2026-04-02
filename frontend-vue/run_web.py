@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""构建生产包后以 Electron 打开（套壳桌面窗口，加载 dist/index.html）。
+"""Build then serve dist with vite preview.
 
-成功执行 npm run build 后，会校验 dist/index.html 与 dist/assets 下 .js/.css 是否存在，再启动 Electron。
+成功执行 npm run build 后，会校验 dist 产物完整，再启动 vite preview。
+默认优先使用 4173；若已被占用，Vite 会自动尝试下一可用端口（未传 --strictPort）。
 """
 import subprocess
 import sys
@@ -28,8 +29,15 @@ def main() -> int:
     if err is not None:
         return err
     if sys.platform == "win32":
-        return subprocess.call("npm run electron", cwd=ROOT, shell=True)
-    return subprocess.call(["npm", "run", "electron"], cwd=ROOT)
+        return subprocess.call(
+            "npm run preview -- --host 127.0.0.1 --port 4173",
+            cwd=ROOT,
+            shell=True,
+        )
+    return subprocess.call(
+        ["npm", "run", "preview", "--", "--host", "127.0.0.1", "--port", "4173"],
+        cwd=ROOT,
+    )
 
 
 if __name__ == "__main__":

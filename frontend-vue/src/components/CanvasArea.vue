@@ -221,9 +221,20 @@ function drawSheetSpritesOnly(
 function drawPlaceholder(ctx: CanvasRenderingContext2D, w: number, h: number) {
   ctx.fillStyle = '#2d2d32'
   ctx.fillRect(0, 0, w, h)
-  ctx.fillStyle = '#8a8a8e'
-  ctx.font = '14px Segoe UI, sans-serif'
-  ctx.fillText(i18n.global.t('canvas.placeholder'), 24, h / 2)
+  const text = i18n.global.t('canvas.placeholder')
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = '#c8c8d4'
+  let fontSize = Math.round(Math.max(16, Math.min(w, h) * 0.05))
+  const fontFamily = '"Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif'
+  ctx.font = `500 ${fontSize}px ${fontFamily}`
+  const pad = 40
+  while (fontSize >= 12 && ctx.measureText(text).width > w - pad) {
+    fontSize -= 1
+    ctx.font = `500 ${fontSize}px ${fontFamily}`
+  }
+  ctx.imageSmoothingEnabled = true
+  ctx.fillText(text, w / 2, h / 2)
 }
 
 function redrawOverview(el: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
@@ -622,13 +633,26 @@ const canvasUseCrisp = computed(() =>
   resolveCanvasCrispClass(atlasStore.state.canvasInterpolation, scale.value),
 )
 
+/** 无图集可画时占位 640×360：勿用像素化缩放，否则 fillText 会糊 */
+const canvasShowsPlaceholder = computed(() => {
+  const sheets = atlasStore.state.packSheets
+  if (!sheets.length) return true
+  const pack = atlasStore.getCurrentPack()
+  return !pack || pack.placements.length === 0
+})
+
 /**
  * 视口缩放时整幅位图的插值（CSS），与 cv-crisp 一致。
- * 精灵在图集内多为 1:1 贴图时 drawImage 的 imageSmoothingEnabled 几乎不变更外观，主要靠此项。
+ * 占位态强制 auto，避免提示文字被最近邻放大发糊。
  */
-const canvasPixelScaleStyle = computed(() => ({
-  imageRendering: canvasUseCrisp.value ? ('pixelated' as const) : ('auto' as const),
-}))
+const canvasPixelScaleStyle = computed(() => {
+  if (canvasShowsPlaceholder.value) {
+    return { imageRendering: 'auto' as const }
+  }
+  return {
+    imageRendering: canvasUseCrisp.value ? ('pixelated' as const) : ('auto' as const),
+  }
+})
 
 /** 与画布同步：整层缩放时辅助线 SVG 与位图使用相同采样，避免一块糊一块锐 */
 const helpersSvgScaleStyle = computed(() => ({
@@ -1138,7 +1162,7 @@ const panLayerStyle = computed(() => ({
         <canvas
           ref="canvasRef"
           class="cv"
-          :class="{ 'cv-crisp': canvasUseCrisp }"
+          :class="{ 'cv-crisp': canvasUseCrisp && !canvasShowsPlaceholder }"
           :style="canvasPixelScaleStyle"
           @pointerdown="onCanvasPointerDown"
         />

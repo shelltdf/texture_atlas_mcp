@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import LeftDock from './components/LeftDock.vue'
 import MenuBar from './components/MenuBar.vue'
@@ -6,16 +7,27 @@ import StatusBar from './components/StatusBar.vue'
 import ToolBar from './components/ToolBar.vue'
 import CanvasArea from './components/CanvasArea.vue'
 import AtlasDialogsHost from './components/AtlasDialogsHost.vue'
+import { APP_ICON_URL } from './appIconUrl'
+import { APP_VERSION } from './version'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+
+function syncDocumentTitle() {
+  document.title = `${t('app.title')} ${APP_VERSION}`
+}
+
+onMounted(syncDocumentTitle)
+watch(locale, syncDocumentTitle)
 </script>
 
 <template>
   <div class="win-app">
     <AtlasDialogsHost />
     <header class="title-strip">
-      <span class="title-icon" aria-hidden="true">▣</span>
-      <span class="title-text">{{ t('app.title') }}</span>
+      <img class="title-icon" :src="APP_ICON_URL" width="18" height="18" alt="" />
+      <span class="title-text"
+        >{{ t('app.title') }} <span class="title-ver">{{ APP_VERSION }}</span></span
+      >
     </header>
     <MenuBar />
     <ToolBar />
@@ -52,8 +64,14 @@ const { t } = useI18n()
   user-select: none;
 }
 .title-icon {
-  color: var(--win-accent);
-  font-size: 14px;
+  display: block;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 3px;
+}
+.title-ver {
+  font-weight: 500;
+  color: var(--win-text-muted, #555);
 }
 .work {
   flex: 1;

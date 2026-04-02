@@ -5,6 +5,7 @@ import { atlasStore } from '../stores/atlasStore'
 import { openExportDialog, openImportAtlasDialog, openReverseDialog } from '../atlasDialogsState'
 import { themeMode, type ThemeMode } from '../stores/uiPrefs'
 import { persistLocale } from '../i18n'
+import { APP_ICON_URL } from '../appIconUrl'
 import { APP_VERSION } from '../version'
 
 const { t, locale } = useI18n()
@@ -219,10 +220,11 @@ watchEffect((onCleanup) => {
         <div class="about-dialog" role="document">
           <div id="about-caption" class="about-caption">{{ t('about.caption') }}</div>
           <div class="about-client">
-            <div class="about-icon" aria-hidden="true">▣</div>
+            <img class="about-icon" :src="APP_ICON_URL" width="48" height="48" alt="" />
             <div class="about-text">
-              <div class="about-product">{{ t('app.title') }}</div>
-              <div class="about-version">{{ t('about.versionLine', { v: APP_VERSION }) }}</div>
+              <div class="about-product">
+                {{ t('app.title') }} <span class="about-ver">{{ APP_VERSION }}</span>
+              </div>
               <p class="about-desc">{{ t('about.description') }}</p>
               <div class="about-legal">{{ t('about.copyright') }}</div>
             </div>
@@ -474,12 +476,9 @@ button.win-btn.primary:hover {
   flex-shrink: 0;
   width: 48px;
   height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 36px;
-  line-height: 1;
-  color: var(--win-accent);
+  display: block;
+  object-fit: contain;
+  border-radius: 6px;
 }
 .about-text {
   min-width: 0;
@@ -488,13 +487,13 @@ button.win-btn.primary:hover {
 .about-product {
   font-size: 13px;
   font-weight: 700;
-  margin-bottom: 6px;
+  margin-bottom: 10px;
   line-height: 1.25;
 }
-.about-version {
+.about-ver {
   font-size: 12px;
+  font-weight: 600;
   color: var(--win-text-muted);
-  margin-bottom: 10px;
 }
 .about-desc {
   margin: 0 0 12px;
