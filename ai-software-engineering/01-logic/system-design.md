@@ -23,6 +23,8 @@ flowchart LR
 - **ExportService**：离屏渲染图集、触发 JSON/PNG 下载。
 - **ReverseService**：读取清单与位图，按矩形切割并交付下载。
 
+**数据等价（与概念阶段一致）**：**离散像素图**（列表中的多张位图）与 **Atlas 描述 + 打包后的像素图（atlas + packed）** 在资源语义上等价；**Pack** 实现前者到后者的转换，**Unpack** 实现后者到前者（与 `00-concept/product-design.md` 中「图集数据等价与转换」一节一致）。
+
 ## 与物理阶段映射
 
 构建目标 `texture-atlas-editor-spa` 对应 `frontend-vue/` 单页应用；详见 `02-physical/README.md`。

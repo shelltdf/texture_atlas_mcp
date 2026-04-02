@@ -11,7 +11,7 @@ flowchart TB
     CA[CanvasArea]
     IP[ImagePropertyPanel]
     IT[ImageThumbnails]
-    AP[AtlasPanel]
+    AP[打包图集 AtlasPanel]
     ST[atlasStore]
     PK[packing.ts]
     IO[atlasIo.ts]

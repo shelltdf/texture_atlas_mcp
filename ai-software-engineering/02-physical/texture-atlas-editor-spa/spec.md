@@ -31,13 +31,23 @@
 - **画布预览**：在每张图集左上角对齐绘制 **maxW×maxH** 的紫色示意外框（与设置一致）；橙色为当前页实际输出边界。**预览用画布尺寸**在逻辑内容 `max(当前页输出, maxW)×max(当前页输出, maxH)`（+1px）之外再留 **bleed 边距**（随线宽/选中框外扩计算），使描边一半线宽与金色选中框不被 canvas 位图边缘裁切；导出 PNG 仍以实际输出为准。
 - **辅助线（分项开关，默认全开）**：`canvasHelperShowGrid`（灰网格）、`canvasHelperShowMaxBounds`（紫单张上限）、`canvasHelperShowOutputBounds`（橙当前页输出）、`canvasHelperShowSpriteBounds`（青/黑图块描边）。另可调 `canvasHelperStrokePx`（纹理像素，**1～128**）、`canvasHelperGridStep`（**8～512**，步进 8）。
 - **线宽默认值同步**：`canvasHelperStrokePx` 初始为 `max(1, round(DEFAULT_MAX_ATLAS_EDGE/256))`。用户修改「单张最大宽/高」并写入 store 时，若数值相对原值有变化，则按 `max(1, round(max(maxW,maxH)/256))` 重算线宽。执行「运行打包」时，仅当 `clampBounds` 修正后的宽/高与打包前不一致时再次同步；**上限未变则保留用户手调线宽**。
-- **选中对象金框**（`selectedId`）：不计入上述辅助线开关，有选中即绘制；**双击列表**通过 `canvasRecenterTick` / `canvasRecenterImageId` 请求画布将图块中心对齐视口中心（见 `CanvasArea.vue`）。
+- **选中对象金框**（`selectedId`）：不计入上述辅助线开关，有选中即绘制。**双击列表项**在 `ImageThumbnails.vue` 中打开**原图全尺寸预览**（`objectUrl`），不再驱动画布平移。
+
+## 打包图集面板（侧栏 `AtlasPanel.vue`）
+
+- 标题为「打包图集」；包含单张最大宽/高、打包算法与 **运行打包**。
+- **不包含**「导入图集」「导出图集」「逆向拆分」按钮；上述命令由**菜单「文件」**与**工具栏**提供（均先经格式选择再选文件）。
 
 ## 导出
 
+- UI **导出图集**须先选择产物类型：`png+json`（默认）、`png-only`、`json-only`；避免与「仅 JSON」类混淆。
 - PNG：与清单 `width`×`height` 一致，**RGBA 透明底**（未占用像素 alpha=0），精灵按清单矩形从源图绘制（保留素材 alpha）。
-- **单页**：`atlas.png`、`atlas.json`。
+- **单页**：`atlas.png`、`atlas.json`（在 `png+json` 模式下）。
 - **多页**：`atlas-00.png` / `atlas-00.json`、`atlas-01.*` …（两位序号，**从 0 起**与页码一致）；各页清单仅描述该页内精灵。
+
+## 导入图集到列表
+
+- **导入图集**（与「逆向拆分」区分）：在确认格式为「本应用 v1：JSON + PNG」后，按清单裁切子图并 **加入左侧图片列表**（`importAtlasIntoList`），不触发浏览器批量下载子图。
 
 ## 逆向
 

@@ -1,101 +1,204 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { atlasStore } from '../stores/atlasStore'
+import { openExportDialog, openImportAtlasDialog, openReverseDialog } from '../atlasDialogsState'
+import { themeMode, type ThemeMode } from '../stores/uiPrefs'
+import { persistLocale } from '../i18n'
 
-const fileImport = ref<HTMLInputElement | null>(null)
-const fileJson = ref<HTMLInputElement | null>(null)
-const filePng = ref<HTMLInputElement | null>(null)
-const pendingReverse = ref<{ json: File | null }>({ json: null })
+const { t, locale } = useI18n()
 
-function openImport() {
-  fileImport.value?.click()
-}
-function onImportChange(ev: Event) {
-  const input = ev.target as HTMLInputElement
-  if (input.files?.length) atlasStore.addFiles(input.files)
-  input.value = ''
-}
+const helpFormatsOpen = ref(false)
+const helpGlossaryOpen = ref(false)
 
-function openReverse() {
-  fileJson.value?.click()
-}
-function onJsonPicked(ev: Event) {
-  const input = ev.target as HTMLInputElement
-  const f = input.files?.[0]
-  input.value = ''
-  if (!f) return
-  pendingReverse.value = { json: f }
-  filePng.value?.click()
-}
-async function onPngPicked(ev: Event) {
-  const input = ev.target as HTMLInputElement
-  const png = input.files?.[0]
-  input.value = ''
-  const json = pendingReverse.value.json
-  pendingReverse.value = { json: null }
-  if (!json || !png) return
-  try {
-    await atlasStore.reverseFromFiles(json, png)
-  } catch (e) {
-    atlasStore.state.statusMessage = e instanceof Error ? e.message : String(e)
-  }
+function setLocale(lang: 'zh' | 'en') {
+  locale.value = lang
+  persistLocale(lang)
 }
 
-function menuClearAll() {
-  if (atlasStore.state.images.length === 0) return
-  if (!confirm('确定要清理全部图片吗？此操作不可撤销。')) return
-  atlasStore.clearAll()
+function setTheme(mode: ThemeMode) {
+  themeMode.value = mode
+}
+
+function onNew() {
+  const hasWork =
+    atlasStore.state.images.length > 0 || atlasStore.state.packSheets.length > 0
+  if (hasWork && !confirm(t('menu.newConfirm'))) return
+  atlasStore.newProject()
 }
 </script>
 
 <template>
   <div class="menu-bar">
-    <input
-      ref="fileImport"
-      type="file"
-      class="hidden"
-      accept="image/*"
-      multiple
-      @change="onImportChange"
-    />
-    <input ref="fileJson" type="file" class="hidden" accept=".json,application/json" @change="onJsonPicked" />
-    <input ref="filePng" type="file" class="hidden" accept="image/png" @change="onPngPicked" />
-
     <div class="menu-root">
-      <span class="menu-label">文件(F)</span>
+      <span class="menu-label">{{ t('menu.file') }}</span>
       <div class="menu-drop">
-        <button type="button" class="menu-item" @click="openImport">导入图片…</button>
-        <button type="button" class="menu-item" @click="openReverse">逆向拆分…</button>
+        <button type="button" class="menu-item" @click="onNew">{{ t('menu.new') }}</button>
+        <button type="button" class="menu-item" @click="openImportAtlasDialog()">
+          {{ t('menu.importAtlas') }}
+        </button>
+        <button type="button" class="menu-item" @click="openExportDialog()">{{ t('menu.exportAtlas') }}</button>
+        <button type="button" class="menu-item" @click="openReverseDialog()">{{ t('menu.reverse') }}</button>
         <div class="menu-sep" />
-        <button type="button" class="menu-item" disabled>退出</button>
+        <button type="button" class="menu-item" disabled>{{ t('menu.exit') }}</button>
       </div>
     </div>
     <div class="menu-root">
-      <span class="menu-label">编辑(E)</span>
+      <span class="menu-label">{{ t('menu.languageMenu') }}</span>
       <div class="menu-drop">
-        <button type="button" class="menu-item" @click="atlasStore.removeSelected()">删除选中</button>
-        <button type="button" class="menu-item" @click="menuClearAll">清理全部</button>
+        <button type="button" class="menu-item menu-check-row" @click="setLocale('zh')">
+          <span class="menu-check" :class="{ on: locale === 'zh' }" aria-hidden="true">✓</span>
+          {{ t('menu.langZh') }}
+        </button>
+        <button type="button" class="menu-item menu-check-row" @click="setLocale('en')">
+          <span class="menu-check" :class="{ on: locale === 'en' }" aria-hidden="true">✓</span>
+          {{ t('menu.langEn') }}
+        </button>
       </div>
     </div>
     <div class="menu-root">
-      <span class="menu-label">视图(V)</span>
+      <span class="menu-label">{{ t('menu.themeMenu') }}</span>
       <div class="menu-drop">
-        <button type="button" class="menu-item" @click="atlasStore.runPack()">重新打包</button>
+        <button type="button" class="menu-item menu-check-row" @click="setTheme('light')">
+          <span class="menu-check" :class="{ on: themeMode === 'light' }" aria-hidden="true">✓</span>
+          {{ t('menu.themeLight') }}
+        </button>
+        <button type="button" class="menu-item menu-check-row" @click="setTheme('dark')">
+          <span class="menu-check" :class="{ on: themeMode === 'dark' }" aria-hidden="true">✓</span>
+          {{ t('menu.themeDark') }}
+        </button>
+        <button type="button" class="menu-item menu-check-row" @click="setTheme('system')">
+          <span class="menu-check" :class="{ on: themeMode === 'system' }" aria-hidden="true">✓</span>
+          {{ t('menu.themeSystem') }}
+        </button>
       </div>
     </div>
     <div class="menu-root">
-      <span class="menu-label">帮助(H)</span>
+      <span class="menu-label">{{ t('menu.settings') }}</span>
       <div class="menu-drop">
-        <button type="button" class="menu-item disabled" disabled>关于 Texture Atlas 编辑器</button>
+        <span class="menu-item menu-placeholder" role="presentation">{{ t('menu.settingsEmpty') }}</span>
       </div>
     </div>
+    <div class="menu-root">
+      <span class="menu-label">{{ t('menu.help') }}</span>
+      <div class="menu-drop">
+        <button type="button" class="menu-item" @click="helpFormatsOpen = true">{{ t('menu.formats') }}</button>
+        <button type="button" class="menu-item" @click="helpGlossaryOpen = true">{{ t('menu.glossary') }}</button>
+        <button type="button" class="menu-item disabled" disabled>{{ t('menu.about') }}</button>
+      </div>
+    </div>
+
+    <Teleport to="body">
+      <div
+        v-if="helpFormatsOpen"
+        class="help-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-formats-title"
+        @click.self="helpFormatsOpen = false"
+      >
+        <div class="help-dialog">
+          <div id="help-formats-title" class="help-dlg-title">{{ t('help.formatsTitle') }}</div>
+          <div class="help-dlg-body">
+            <section>
+              <h4>{{ t('help.fNoCustomFormatTitle') }}</h4>
+              <p>{{ t('help.fNoCustomFormatBody') }}</p>
+            </section>
+            <section>
+              <h4>{{ t('help.fImportTitle') }}</h4>
+              <p>{{ t('help.fImportBody') }}</p>
+            </section>
+            <section>
+              <h4>{{ t('help.fExportTitle') }}</h4>
+              <p>{{ t('help.fExportP1') }}</p>
+              <p>{{ t('help.fExportP2') }}</p>
+            </section>
+            <section>
+              <h4>{{ t('help.fReverseTitle') }}</h4>
+              <p>{{ t('help.fReverseBody') }}</p>
+            </section>
+            <table class="help-table" :aria-label="t('help.formatsTitle')">
+              <thead>
+                <tr>
+                  <th>{{ t('help.tableScene') }}</th>
+                  <th>{{ t('help.tableApp') }}</th>
+                  <th>{{ t('help.tableEquiv') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ t('help.trImport') }}</td>
+                  <td>{{ t('help.trImportFmt') }}</td>
+                  <td>{{ t('help.trImportNote') }}</td>
+                </tr>
+                <tr>
+                  <td>{{ t('help.trExportImg') }}</td>
+                  <td>{{ t('help.trExportImgFmt') }}</td>
+                  <td>{{ t('help.trExportImgNote') }}</td>
+                </tr>
+                <tr>
+                  <td>{{ t('help.trExportJson') }}</td>
+                  <td>{{ t('help.trExportJsonFmt') }}</td>
+                  <td>{{ t('help.trExportJsonNote') }}</td>
+                </tr>
+                <tr>
+                  <td>{{ t('help.trRev') }}</td>
+                  <td>{{ t('help.trRevFmt') }}</td>
+                  <td>{{ t('help.trRevNote') }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="help-dlg-actions">
+            <button type="button" class="win-btn primary" @click="helpFormatsOpen = false">
+              {{ t('help.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="helpGlossaryOpen"
+        class="help-overlay"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-glossary-title"
+        @click.self="helpGlossaryOpen = false"
+      >
+        <div class="help-dialog help-dialog-wide">
+          <div id="help-glossary-title" class="help-dlg-title">{{ t('help.glossaryTitle') }}</div>
+          <div class="help-dlg-body help-glossary-body">
+            <p class="glossary-lead">{{ t('help.gLead') }}</p>
+            <dl class="glossary-dl">
+              <dt>{{ t('help.gAtlas') }}</dt>
+              <dd>{{ t('help.gAtlasBody') }}</dd>
+              <dt>{{ t('help.gPixel') }}</dt>
+              <dd>{{ t('help.gPixelBody') }}</dd>
+              <dt>{{ t('help.gDiscrete') }}</dt>
+              <dd>{{ t('help.gDiscreteBody') }}</dd>
+              <dt>{{ t('help.gPack') }}</dt>
+              <dd>{{ t('help.gPackBody') }}</dd>
+              <dt>{{ t('help.gPacked') }}</dt>
+              <dd>{{ t('help.gPackedBody') }}</dd>
+              <dt>{{ t('help.gUnpack') }}</dt>
+              <dd>{{ t('help.gUnpackBody') }}</dd>
+            </dl>
+            <p class="glossary-flow">{{ t('help.gFlow') }}</p>
+          </div>
+          <div class="help-dlg-actions">
+            <button type="button" class="win-btn primary" @click="helpGlossaryOpen = false">
+              {{ t('help.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <style scoped>
-.hidden {
-  display: none;
-}
 .menu-bar {
   display: flex;
   align-items: stretch;
@@ -114,6 +217,7 @@ function menuClearAll() {
   padding: 2px 8px;
   font-size: 12px;
   cursor: default;
+  color: var(--win-text);
 }
 .menu-root:hover .menu-label {
   background: var(--win-menu-hover);
@@ -127,11 +231,12 @@ function menuClearAll() {
   top: 100%;
   left: 0;
   min-width: 180px;
-  background: #f0f0f0;
+  background: var(--win-menu-bg);
   border: 1px solid var(--win-border-dark);
   box-shadow: 2px 2px 4px rgba(0, 0, 0, 0.2);
   z-index: 200;
   padding: 2px 0;
+  color: var(--win-text);
 }
 .menu-root:hover .menu-drop {
   display: block;
@@ -145,18 +250,155 @@ function menuClearAll() {
   background: transparent;
   font: inherit;
   cursor: pointer;
+  color: inherit;
 }
 .menu-item:hover:not(:disabled) {
-  background: #91c9f7;
+  background: var(--win-menu-hover);
 }
 .menu-item:disabled,
 .menu-item.disabled {
-  color: #888;
+  color: var(--win-text-dim);
   cursor: default;
 }
 .menu-sep {
   height: 1px;
   background: var(--win-border);
   margin: 4px 0;
+}
+
+.menu-placeholder {
+  cursor: default;
+  color: var(--win-text-dim);
+  pointer-events: none;
+  font-style: italic;
+}
+.menu-check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 8px;
+}
+.menu-check {
+  display: inline-block;
+  width: 12px;
+  color: transparent;
+  font-size: 11px;
+}
+.menu-check.on {
+  color: var(--win-accent);
+  font-weight: 700;
+}
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0, 0, 0, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.help-dialog.help-dialog-wide {
+  max-width: 560px;
+}
+.help-dialog {
+  max-width: 520px;
+  max-height: min(90vh, 640px);
+  overflow: auto;
+  background: var(--win-dialog-bg);
+  border: 1px solid var(--win-border-dark);
+  box-shadow: 4px 4px 16px rgba(0, 0, 0, 0.25);
+  padding: 12px 14px 10px;
+  color: var(--win-text);
+}
+.help-dlg-title {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--win-border);
+}
+.help-dlg-body {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--win-text);
+}
+.help-dlg-body section {
+  margin-bottom: 12px;
+}
+.help-dlg-body h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.help-dlg-body p {
+  margin: 0 0 6px;
+}
+.help-dlg-body code {
+  font-size: 11px;
+  background: var(--win-code-bg);
+  padding: 0 4px;
+  border: 1px solid var(--win-border);
+}
+.help-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.help-table th,
+.help-table td {
+  border: 1px solid var(--win-border);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.help-table th {
+  background: var(--win-panel);
+  font-weight: 600;
+}
+.help-dlg-actions {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--win-border);
+  text-align: right;
+}
+button.win-btn.primary {
+  border-color: #005a9e;
+  background: linear-gradient(180deg, #42a5f5 0%, #0078d4 100%);
+  color: #fff;
+  font-weight: 600;
+}
+button.win-btn.primary:hover {
+  background: linear-gradient(180deg, #5cb0f6 0%, #1084e0 100%);
+}
+
+.glossary-lead {
+  margin: 0 0 10px;
+  color: var(--win-text-muted);
+}
+.glossary-dl {
+  margin: 0;
+}
+.glossary-dl dt {
+  font-weight: 700;
+  margin-top: 10px;
+  color: var(--win-text);
+}
+.glossary-dl dt:first-child {
+  margin-top: 0;
+}
+.glossary-dl dd {
+  margin: 4px 0 0;
+  padding-left: 0;
+}
+.glossary-flow {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  background: var(--win-code-bg);
+  border: 1px solid var(--win-border);
+  font-size: 11px;
+  line-height: 1.45;
 }
 </style>

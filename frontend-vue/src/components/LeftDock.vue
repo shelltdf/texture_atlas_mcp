@@ -6,8 +6,8 @@ import ImageThumbnails from './ImageThumbnails.vue'
 
 <template>
   <aside class="dock">
-    <ImagePropertyPanel class="props-block" />
     <ImageThumbnails />
+    <ImagePropertyPanel class="props-block" />
     <AtlasPanel />
   </aside>
 </template>

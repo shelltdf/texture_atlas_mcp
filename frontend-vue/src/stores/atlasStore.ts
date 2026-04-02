@@ -3,18 +3,27 @@ import {
   type PackAlgorithmId,
   type PackResult,
   clampAtlasDimension,
+  clampAtlasMargin,
   clampBounds,
+  clampPackGap,
   DEFAULT_MAX_ATLAS_EDGE,
   packWithAlgorithmSheets,
 } from '../lib/packing'
 import {
   buildManifest,
   canvasToPngBlob,
+  sanitizeFilename,
   splitAtlasToDownloads,
   triggerDownloadText,
   triggerDownloadBlob,
 } from '../lib/atlasIo'
 import { parseManifestJson } from '../lib/manifest'
+
+/** 导出图集时可选产物组合 */
+export type AtlasExportMode = 'png+json' | 'png-only' | 'json-only'
+
+/** 图集预览：精灵缩放插值（drawImage + 画布元素 CSS） */
+export type CanvasInterpolationMode = 'auto' | 'nearest' | 'smooth'
 
 export interface AtlasImageEntry {
   id: string
@@ -67,22 +76,27 @@ const state = reactive({
   /** 单张图集允许的最大宽、高（独立），用户可改 */
   maxAtlasWidth: DEFAULT_MAX_ATLAS_EDGE,
   maxAtlasHeight: DEFAULT_MAX_ATLAS_EDGE,
+  /** 打包：图片之间的间隙（像素） */
+  packGap: 0,
+  /** 打包：图集四边空边（内边距，像素） */
+  atlasMargin: 0,
   /** 画布：各类辅助线独立开关（选中金框不属辅助线，始终可按选中状态绘制） */
   canvasHelperShowGrid: true,
   canvasHelperShowMaxBounds: true,
   canvasHelperShowOutputBounds: true,
   canvasHelperShowSpriteBounds: true,
-  /** 画布：辅助线线宽（纹理像素），最小 1；随单张上限 max(W,H) 变更时自动设为 round(max/256) 与 1 取大 */
-  canvasHelperStrokePx: Math.max(1, Math.round(DEFAULT_MAX_ATLAS_EDGE / 256)),
+  /** 画布：显示纹理原点 (0,0) 与第一个像素格 */
+  canvasHelperShowOrigin: true,
+  /** 画布：辅助线线宽（纹理像素），最小 1（与选中框无关；选中框为屏幕空间宽度） */
+  canvasHelperStrokePx: 1,
   /** 画布：辅助网格步长（纹理像素） */
   canvasHelperGridStep: 64,
+  /** 画布：图集精灵插值 — auto：缩小时平滑、放大≥1 最近邻；nearest/smooth：强制 */
+  canvasInterpolation: 'auto' as CanvasInterpolationMode,
   packSheets: [] as PackResult[],
   activeSheetIndex: 0,
   packError: '' as string,
   statusMessage: '就绪',
-  /** 双击列表：画布将尝试居中到该图（由 CanvasArea 消费） */
-  canvasRecenterTick: 0,
-  canvasRecenterImageId: null as string | null,
 })
 
 const idToEntry = computed(() => {
@@ -98,6 +112,15 @@ function getCurrentPack(): PackResult | null {
   return sh[i] ?? null
 }
 
+/** 多页图集中，包含该精灵矩形的那一页索引；找不到返回 null */
+function findSheetIndexForSpriteId(spriteId: string): number | null {
+  for (let i = 0; i < state.packSheets.length; i++) {
+    const pack = state.packSheets[i]
+    if (pack.placements.some((p) => p.id === spriteId)) return i
+  }
+  return null
+}
+
 function clearPacks() {
   state.packSheets = []
   state.activeSheetIndex = 0
@@ -105,12 +128,6 @@ function clearPacks() {
 
 function setStatus(msg: string) {
   state.statusMessage = msg
-}
-
-/** 与单张最大宽/高联动：辅助线线宽（px）= max(W,H)/256，至少 1 */
-function syncCanvasHelperStrokeFromMaxBounds() {
-  const mx = Math.max(state.maxAtlasWidth, state.maxAtlasHeight)
-  state.canvasHelperStrokePx = Math.max(1, Math.round(mx / 256))
 }
 
 function addFiles(files: FileList | File[]) {
@@ -134,11 +151,10 @@ function addFiles(files: FileList | File[]) {
 
 function select(id: string | null) {
   state.selectedId = id
-}
-
-function removeSelected() {
-  if (!state.selectedId) return
-  removeImage(state.selectedId)
+  if (id && state.packSheets.length > 0) {
+    const si = findSheetIndexForSpriteId(id)
+    if (si !== null) state.activeSheetIndex = si
+  }
 }
 
 function removeImage(id: string) {
@@ -159,6 +175,16 @@ function clearAll() {
   setStatus('已清空列表')
 }
 
+/** 新建：清空列表与打包结果，回到初始就绪状态 */
+function newProject() {
+  for (const e of state.images) URL.revokeObjectURL(e.objectUrl)
+  state.images = []
+  state.selectedId = null
+  state.packError = ''
+  clearPacks()
+  setStatus('就绪')
+}
+
 function runPack() {
   state.packError = ''
   clearPacks()
@@ -174,10 +200,10 @@ function runPack() {
     const b = clampBounds(w0, h0)
     state.maxAtlasWidth = b.maxW
     state.maxAtlasHeight = b.maxH
-    if (b.maxW !== w0 || b.maxH !== h0) {
-      syncCanvasHelperStrokeFromMaxBounds()
-    }
-    const sheets = packWithAlgorithmSheets(state.algorithm, items, b)
+    const sheets = packWithAlgorithmSheets(state.algorithm, items, b, {
+      gap: state.packGap,
+      atlasMargin: state.atlasMargin,
+    })
     state.packSheets = sheets
     state.activeSheetIndex = 0
     const cur = getCurrentPack()
@@ -207,7 +233,7 @@ function renderSheetCanvas(pack: PackResult): HTMLCanvasElement {
   return c
 }
 
-async function exportPublish() {
+async function exportPublish(mode: AtlasExportMode = 'png+json') {
   try {
     const sheets = state.packSheets
     if (!sheets.length) throw new Error('请先成功运行打包')
@@ -229,21 +255,72 @@ async function exportPublish() {
       const manifest = buildManifest(pack.width, pack.height, sprites)
       const json = JSON.stringify(manifest, null, 2)
       const suffix = sheets.length > 1 ? `-${pad2(i)}` : ''
-      triggerDownloadText(json, `atlas${suffix}.json`)
-      const blob = await canvasToPngBlob(canvas)
-      triggerDownloadBlob(blob, `atlas${suffix}.png`)
+      if (mode !== 'png-only') {
+        triggerDownloadText(json, `atlas${suffix}.json`)
+      }
+      if (mode !== 'json-only') {
+        const blob = await canvasToPngBlob(canvas)
+        triggerDownloadBlob(blob, `atlas${suffix}.png`)
+      }
       if (i < sheets.length - 1) {
         await new Promise((r) => setTimeout(r, 280))
       }
     }
-    setStatus(
-      sheets.length > 1
-        ? `已下载 ${sheets.length} 组 atlas-00.json / png 起（页码从 0）`
-        : '已下载 atlas.json 与 atlas.png',
-    )
+    if (mode === 'png+json') {
+      setStatus(
+        sheets.length > 1
+          ? `已下载 ${sheets.length} 组 atlas-00.json / png 起（页码从 0）`
+          : '已下载 atlas.json 与 atlas.png',
+      )
+    } else if (mode === 'png-only') {
+      setStatus(sheets.length > 1 ? `已下载 ${sheets.length} 张 atlas-00.png 起` : '已下载 atlas.png')
+    } else {
+      setStatus(sheets.length > 1 ? `已下载 ${sheets.length} 份 atlas-00.json 起` : '已下载 atlas.json')
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     setStatus(msg)
+  }
+}
+
+/** 将本应用清单 + PNG 图集拆成子图并加入左侧列表（不触发下载） */
+async function importAtlasIntoList(jsonFile: File, pngFile: File) {
+  const text = await jsonFile.text()
+  const manifest = parseManifestJson(text)
+  const url = URL.createObjectURL(pngFile)
+  const img = new Image()
+  img.crossOrigin = 'anonymous'
+  await new Promise<void>((resolve, reject) => {
+    img.onload = () => resolve()
+    img.onerror = () => reject(new Error('无法加载图集 PNG'))
+    img.src = url
+  })
+  try {
+    if (img.naturalWidth !== manifest.width || img.naturalHeight !== manifest.height) {
+      throw new Error(
+        `图片尺寸 ${img.naturalWidth}×${img.naturalHeight} 与清单 ${manifest.width}×${manifest.height} 不一致`,
+      )
+    }
+    const c = document.createElement('canvas')
+    const ctx = c.getContext('2d')
+    if (!ctx) throw new Error('无法创建 Canvas 上下文')
+    let n = 0
+    for (const sp of manifest.sprites) {
+      c.width = sp.w
+      c.height = sp.h
+      ctx.clearRect(0, 0, sp.w, sp.h)
+      ctx.drawImage(img, sp.x, sp.y, sp.w, sp.h, 0, 0, sp.w, sp.h)
+      const blob = await canvasToPngBlob(c)
+      const base = sanitizeFilename(sp.name.replace(/\.[^.]+$/, '') || sp.id)
+      const file = new File([blob], `${base}.png`, { type: 'image/png' })
+      const e = await fileToEntry(file)
+      state.images.push(e)
+      n++
+    }
+    clearPacks()
+    setStatus(`已从图集导入 ${n} 张子图到列表`)
+  } finally {
+    URL.revokeObjectURL(url)
   }
 }
 
@@ -269,13 +346,15 @@ async function reverseFromFiles(jsonFile: File, pngFile: File) {
 export const atlasStore = {
   state,
   getCurrentPack,
+  findSheetIndexForSpriteId,
   addFiles,
   select,
-  removeSelected,
   removeImage,
   clearAll,
+  newProject,
   runPack,
   exportPublish,
+  importAtlasIntoList,
   reverseFromFiles,
   setAlgorithm(id: PackAlgorithmId) {
     state.algorithm = id
@@ -284,13 +363,17 @@ export const atlasStore = {
     const next = clampAtlasDimension(raw)
     if (next === state.maxAtlasWidth) return
     state.maxAtlasWidth = next
-    syncCanvasHelperStrokeFromMaxBounds()
   },
   setMaxAtlasHeight(raw: number) {
     const next = clampAtlasDimension(raw)
     if (next === state.maxAtlasHeight) return
     state.maxAtlasHeight = next
-    syncCanvasHelperStrokeFromMaxBounds()
+  },
+  setPackGap(raw: number) {
+    state.packGap = clampPackGap(raw)
+  },
+  setAtlasMargin(raw: number) {
+    state.atlasMargin = clampAtlasMargin(raw)
   },
   setCanvasHelperShowGrid(v: boolean) {
     state.canvasHelperShowGrid = v
@@ -304,6 +387,9 @@ export const atlasStore = {
   setCanvasHelperShowSpriteBounds(v: boolean) {
     state.canvasHelperShowSpriteBounds = v
   },
+  setCanvasHelperShowOrigin(v: boolean) {
+    state.canvasHelperShowOrigin = v
+  },
   setCanvasHelperStrokePx(raw: number) {
     const v = Math.round(Number(raw))
     if (!Number.isFinite(v)) return
@@ -314,16 +400,12 @@ export const atlasStore = {
     if (!Number.isFinite(v)) return
     state.canvasHelperGridStep = Math.min(512, Math.max(8, v))
   },
+  setCanvasInterpolation(mode: CanvasInterpolationMode) {
+    state.canvasInterpolation = mode
+  },
   setActiveSheetIndex(i: number) {
     const n = state.packSheets.length
     if (n === 0) return
     state.activeSheetIndex = Math.min(Math.max(0, Math.floor(i)), n - 1)
-  },
-  requestCanvasRecenterOnImage(id: string) {
-    state.canvasRecenterImageId = id
-    state.canvasRecenterTick++
-  },
-  clearCanvasRecenterRequest() {
-    state.canvasRecenterImageId = null
   },
 }
