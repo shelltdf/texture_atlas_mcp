@@ -8,7 +8,7 @@
 ## 依赖
 
 - Node.js 与 npm（建议 LTS）。
-- 在 `frontend-vue` 下执行 `npm install`。
+- **首次或克隆后**在 `frontend-vue` 下执行 `npm install`（生成 `node_modules`，否则 `vue-tsc` / `vite` 不可用）。若未安装，运行 `build.py` / `run.py` 等会先提示执行 `npm install`。
 
 ## 脚本（Python 封装，位于 `frontend-vue/`）
 
@@ -16,7 +16,7 @@
 |------|------|
 | `build.py` | `npm run build` |
 | `test.py` | 类型检查 + 构建（冒烟） |
-| `run.py` | 构建后 `vite preview` |
+| `run.py` | 构建后 `vite preview`（默认 `127.0.0.1:4173`；端口占用时 Vite 自动换端口，终端会打印实际地址） |
 | `dev.py` | `npm run dev` |
 | `publish.py` | 构建并将 `dist` 复制到 `frontend-vue/publish/` |
 

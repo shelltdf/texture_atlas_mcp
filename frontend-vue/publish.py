@@ -5,12 +5,17 @@ import subprocess
 import sys
 from pathlib import Path
 
+from deps_check import require_node_modules
+
 ROOT = Path(__file__).resolve().parent
 DIST = ROOT / "dist"
 OUT = ROOT / "publish"
 
 
 def main() -> int:
+    err = require_node_modules()
+    if err is not None:
+        return err
     if sys.platform == "win32":
         r = subprocess.call("npm run build", cwd=ROOT, shell=True)
     else:
