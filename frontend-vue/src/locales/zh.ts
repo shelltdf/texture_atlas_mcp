@@ -2,6 +2,15 @@ export default {
   app: {
     title: 'Texture Atlas 编辑器',
   },
+  /** 帮助 → 关于：标准关于对话框文案 */
+  about: {
+    caption: '关于 Texture Atlas 编辑器',
+    versionLine: '版本 {v}',
+    description:
+      '在浏览器中打包、预览与导出纹理图集（PNG + JSON），支持多页图集与辅助线预览。',
+    copyright: '本软件按「原样」提供，不作任何明示或暗示的保证。',
+    ok: '确定',
+  },
   menu: {
     file: '文件(F)',
     new: '新建(N)',

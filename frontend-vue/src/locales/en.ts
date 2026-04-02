@@ -2,6 +2,14 @@ export default {
   app: {
     title: 'Texture Atlas Editor',
   },
+  about: {
+    caption: 'About Texture Atlas Editor',
+    versionLine: 'Version {v}',
+    description:
+      'Pack, preview, and export texture atlases (PNG + JSON) in the browser — multi-page sheets and helper overlays.',
+    copyright: 'Provided as-is, without warranty of any kind.',
+    ok: 'OK',
+  },
   menu: {
     file: 'File(F)',
     new: 'New(N)',

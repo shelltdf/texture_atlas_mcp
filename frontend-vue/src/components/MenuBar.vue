@@ -1,15 +1,17 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { atlasStore } from '../stores/atlasStore'
 import { openExportDialog, openImportAtlasDialog, openReverseDialog } from '../atlasDialogsState'
 import { themeMode, type ThemeMode } from '../stores/uiPrefs'
 import { persistLocale } from '../i18n'
+import { APP_VERSION } from '../version'
 
 const { t, locale } = useI18n()
 
 const helpFormatsOpen = ref(false)
 const helpGlossaryOpen = ref(false)
+const aboutOpen = ref(false)
 
 function setLocale(lang: 'zh' | 'en') {
   locale.value = lang
@@ -26,6 +28,15 @@ function onNew() {
   if (hasWork && !confirm(t('menu.newConfirm'))) return
   atlasStore.newProject()
 }
+
+watchEffect((onCleanup) => {
+  if (!aboutOpen.value) return
+  const onEsc = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') aboutOpen.value = false
+  }
+  window.addEventListener('keydown', onEsc)
+  onCleanup(() => window.removeEventListener('keydown', onEsc))
+})
 </script>
 
 <template>
@@ -84,7 +95,7 @@ function onNew() {
       <div class="menu-drop">
         <button type="button" class="menu-item" @click="helpFormatsOpen = true">{{ t('menu.formats') }}</button>
         <button type="button" class="menu-item" @click="helpGlossaryOpen = true">{{ t('menu.glossary') }}</button>
-        <button type="button" class="menu-item disabled" disabled>{{ t('menu.about') }}</button>
+        <button type="button" class="menu-item" @click="aboutOpen = true">{{ t('menu.about') }}</button>
       </div>
     </div>
 
@@ -190,6 +201,35 @@ function onNew() {
           <div class="help-dlg-actions">
             <button type="button" class="win-btn primary" @click="helpGlossaryOpen = false">
               {{ t('help.close') }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
+    <Teleport to="body">
+      <div
+        v-if="aboutOpen"
+        class="help-overlay about-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="about-caption"
+        @click.self="aboutOpen = false"
+      >
+        <div class="about-dialog" role="document">
+          <div id="about-caption" class="about-caption">{{ t('about.caption') }}</div>
+          <div class="about-client">
+            <div class="about-icon" aria-hidden="true">▣</div>
+            <div class="about-text">
+              <div class="about-product">{{ t('app.title') }}</div>
+              <div class="about-version">{{ t('about.versionLine', { v: APP_VERSION }) }}</div>
+              <p class="about-desc">{{ t('about.description') }}</p>
+              <div class="about-legal">{{ t('about.copyright') }}</div>
+            </div>
+          </div>
+          <div class="about-actions">
+            <button type="button" class="win-btn primary about-btn-ok" @click="aboutOpen = false">
+              {{ t('about.ok') }}
             </button>
           </div>
         </div>
@@ -400,5 +440,83 @@ button.win-btn.primary:hover {
   border: 1px solid var(--win-border);
   font-size: 11px;
   line-height: 1.45;
+}
+
+/* 标准关于对话框（类 Windows：标题条 + 图标区 + 正文 + 确定） */
+.about-backdrop {
+  z-index: 3100;
+}
+.about-dialog {
+  width: 420px;
+  max-width: min(96vw, 480px);
+  background: var(--win-dialog-bg);
+  border: 1px solid var(--win-border-dark);
+  box-shadow: 4px 4px 16px rgba(0, 0, 0, 0.3);
+  color: var(--win-text);
+  overflow: hidden;
+}
+.about-caption {
+  padding: 6px 10px 7px;
+  font-size: 12px;
+  font-weight: 700;
+  background: linear-gradient(180deg, var(--win-inset-bg-soft) 0%, var(--win-panel) 100%);
+  border-bottom: 1px solid var(--win-border);
+  color: var(--win-title);
+  user-select: none;
+}
+.about-client {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 14px 14px;
+}
+.about-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  line-height: 1;
+  color: var(--win-accent);
+}
+.about-text {
+  min-width: 0;
+  flex: 1;
+}
+.about-product {
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  line-height: 1.25;
+}
+.about-version {
+  font-size: 12px;
+  color: var(--win-text-muted);
+  margin-bottom: 10px;
+}
+.about-desc {
+  margin: 0 0 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--win-text);
+}
+.about-legal {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--win-text-muted);
+}
+.about-actions {
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--win-border);
+  background: var(--win-panel);
+  text-align: right;
+}
+.about-btn-ok {
+  min-width: 88px;
+  height: 24px;
+  padding: 0 16px;
+  font-size: 12px;
 }
 </style>

@@ -5,6 +5,10 @@ import type { PackResult, Placement } from '../lib/packing'
 import type { AtlasImageEntry, CanvasInterpolationMode } from '../stores/atlasStore'
 import { atlasStore } from '../stores/atlasStore'
 import { i18n } from '../i18n'
+import AtlasHelpersSvg, {
+  type AtlasHelpersSpec,
+  type OverlayBlock,
+} from './AtlasHelpersSvg.vue'
 
 const { t, locale } = useI18n()
 
@@ -68,58 +72,12 @@ function resolveCanvasCrispClass(mode: CanvasInterpolationMode, viewScale: numbe
  */
 const PREVIEW_ATLAS_BLEED = Math.ceil(128 / 2) + 2
 
-function drawHelperGrid(
-  ctx: CanvasRenderingContext2D,
-  ox: number,
-  oy: number,
-  w: number,
-  h: number,
-  step: number,
-  lineW: number,
-) {
-  if (step < 4) return
-  ctx.save()
-  ctx.strokeStyle = 'rgba(70, 75, 95, 0.42)'
-  ctx.lineWidth = Math.max(0.5, lineW)
-  ctx.setLineDash([3, 5])
-  for (let gx = 0; gx <= w; gx += step) {
-    const x = ox + gx
-    ctx.beginPath()
-    ctx.moveTo(x, oy)
-    ctx.lineTo(x, oy + h)
-    ctx.stroke()
-  }
-  for (let gy = 0; gy <= h; gy += step) {
-    const y = oy + gy
-    ctx.beginPath()
-    ctx.moveTo(ox, y)
-    ctx.lineTo(ox + w, y)
-    ctx.stroke()
-  }
-  ctx.restore()
-}
-
-interface SheetDrawOpts {
-  selectedId: string | null
+interface SheetSpriteOpts {
   maxW: number
   maxH: number
-  showGrid: boolean
-  showMaxBounds: boolean
-  showOutputBounds: boolean
-  showSpriteBounds: boolean
-  /** 纹理原点 (0,0) 与第一个像素 [0,0] 格 */
-  showOrigin: boolean
-  /** 辅助线线宽（纹理像素），≥1 */
-  helperStrokePx: number
-  helperGridStep: number
-  /** 四周边距（纹理像素），内容从 (ox+bleed, oy+bleed) 起画 */
   bleed: number
-  /** 视口对画布的缩放；用于选中框/悬停格等「屏幕空间」线宽与图像是否平滑缩放 */
   viewScale: number
-  /** 精灵 drawImage 插值模式 */
   interpolation: CanvasInterpolationMode
-  /** 当前悬停的图集像素坐标（单页预览）；总览模式不传 */
-  hoverAtlasPixel: { x: number; y: number } | null
 }
 
 function layoutOverview(
@@ -157,38 +115,16 @@ function layoutOverview(
   return { cw: maxRight + PAD_X, ch: y + PAD_X, blocks }
 }
 
-function drawSheetContent(
+/** 仅绘制精灵位图；辅助线由 AtlasHelpersSvg 矢量叠加 */
+function drawSheetSpritesOnly(
   ctx: CanvasRenderingContext2D,
   pack: PackResult,
   ox: number,
   oy: number,
   map: Map<string, AtlasImageEntry>,
-  opts: SheetDrawOpts,
+  opts: SheetSpriteOpts,
 ) {
-  const {
-    selectedId,
-    maxW,
-    maxH,
-    showGrid,
-    showMaxBounds,
-    showOutputBounds,
-    showSpriteBounds,
-    showOrigin,
-    helperStrokePx,
-    helperGridStep,
-    bleed,
-    viewScale,
-    interpolation,
-    hoverAtlasPixel,
-  } = opts
-  const px = Math.max(1, helperStrokePx)
-  const vs = Math.max(1e-6, viewScale)
-  /** 约 1 个屏幕像素对应的纹理线宽 */
-  const screenPx = 1 / vs
-  const outerLw = px
-  const spriteLw = Math.max(1, Math.round(px * 0.9))
-  const dash: [number, number] = [Math.max(4, Math.round(px * 3)), Math.max(3, Math.round(px * 2))]
-
+  const { maxW, maxH, bleed, viewScale: vs, interpolation } = opts
   const logicW = Math.max(pack.width, maxW) + 1
   const logicH = Math.max(pack.height, maxH) + 1
   const ox0 = ox + bleed
@@ -197,19 +133,7 @@ function drawSheetContent(
   const totalH = logicH + 2 * bleed
   ctx.clearRect(ox, oy, totalW, totalH)
 
-  if (showGrid) {
-    drawHelperGrid(
-      ctx,
-      ox0,
-      oy0,
-      logicW,
-      logicH,
-      helperGridStep,
-      Math.max(0.5, px * 0.5),
-    )
-  }
-
-  const useSmooth = resolveImageSmoothing(interpolation, vs)
+  const useSmooth = resolveImageSmoothing(interpolation, Math.max(1e-6, vs))
   ctx.imageSmoothingEnabled = useSmooth
   if (useSmooth) {
     ctx.imageSmoothingQuality = 'high'
@@ -220,106 +144,6 @@ function drawSheetContent(
     const x = ox0 + p.x
     const y = oy0 + p.y
     ctx.drawImage(entry.img, 0, 0, entry.width, entry.height, x, y, p.w, p.h)
-    if (!showSpriteBounds) continue
-    ctx.save()
-    ctx.lineWidth = spriteLw
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.65)'
-    const inset = spriteLw * 0.5
-    const iw = Math.max(0, p.w - spriteLw)
-    const ih = Math.max(0, p.h - spriteLw)
-    ctx.strokeRect(x + inset, y + inset, iw, ih)
-    ctx.strokeStyle = 'rgba(0, 230, 255, 0.95)'
-    const iw2 = Math.max(0, p.w - inset)
-    const ih2 = Math.max(0, p.h - inset)
-    ctx.strokeRect(x + inset * 0.5, y + inset * 0.5, iw2, ih2)
-    ctx.restore()
-  }
-
-  if (showOutputBounds) {
-    ctx.save()
-    ctx.setLineDash(dash)
-    ctx.strokeStyle = '#ff9f1a'
-    ctx.lineWidth = outerLw
-    const inset = outerLw * 0.5
-    ctx.strokeRect(
-      ox0 + inset,
-      oy0 + inset,
-      pack.width - outerLw,
-      pack.height - outerLw,
-    )
-    ctx.restore()
-  }
-
-  if (showMaxBounds) {
-    const maxLw = px
-    const maxInset = maxLw * 0.5
-    const rw = Math.max(1, maxW - maxLw)
-    const rh = Math.max(1, maxH - maxLw)
-    ctx.save()
-    ctx.setLineDash([
-      Math.max(4, Math.round(px * 2.5)),
-      Math.max(3, Math.round(px * 2)),
-      Math.max(8, Math.round(px * 5)),
-      Math.max(3, Math.round(px * 2)),
-    ])
-    ctx.strokeStyle = 'rgba(168, 85, 247, 0.92)'
-    ctx.lineWidth = maxLw
-    ctx.strokeRect(ox0 + maxInset, oy0 + maxInset, rw, rh)
-    ctx.restore()
-  }
-
-  /* 选中框：屏幕空间约 1px 线宽（纹理空间 = 1/viewScale） */
-  if (selectedId) {
-    const p = pack.placements.find((pl) => pl.id === selectedId)
-    if (p) {
-      const x = ox0 + p.x
-      const y = oy0 + p.y
-      ctx.save()
-      ctx.setLineDash([])
-      ctx.strokeStyle = 'rgba(255, 215, 0, 0.98)'
-      ctx.lineWidth = Math.max(0.25, screenPx)
-      const pad = screenPx
-      ctx.strokeRect(x - pad, y - pad, p.w + pad * 2, p.h + pad * 2)
-      ctx.restore()
-    }
-  }
-
-  /* 悬停像素格：屏幕空间约 1px 描边 */
-  if (hoverAtlasPixel) {
-    const { x: hx, y: hy } = hoverAtlasPixel
-    if (hx >= 0 && hy >= 0 && hx < pack.width && hy < pack.height) {
-      ctx.save()
-      ctx.setLineDash([])
-      ctx.strokeStyle = 'rgba(255, 220, 60, 0.98)'
-      ctx.lineWidth = Math.max(0.25, screenPx)
-      ctx.strokeRect(ox0 + hx, oy0 + hy, 1, 1)
-      ctx.restore()
-    }
-  }
-
-  /* 原点最后绘制，保证始终盖在图块、辅助线、选中框与悬停格之上 */
-  if (showOrigin && pack.width >= 1 && pack.height >= 1) {
-    const arm = Math.min(14, pack.width, pack.height)
-    ctx.save()
-    ctx.setLineDash([])
-    ctx.fillStyle = 'rgba(236, 72, 153, 0.22)'
-    ctx.fillRect(ox0, oy0, 1, 1)
-    ctx.strokeStyle = 'rgba(236, 72, 153, 0.95)'
-    ctx.lineWidth = Math.max(0.25, screenPx)
-    ctx.strokeRect(ox0, oy0, 1, 1)
-    ctx.strokeStyle = 'rgba(236, 72, 153, 0.88)'
-    ctx.lineWidth = Math.max(1, screenPx * 1.25)
-    ctx.beginPath()
-    ctx.moveTo(ox0, oy0)
-    ctx.lineTo(ox0 + arm, oy0)
-    ctx.moveTo(ox0, oy0)
-    ctx.lineTo(ox0, oy0 + arm)
-    ctx.stroke()
-    ctx.fillStyle = 'rgba(236, 72, 153, 0.95)'
-    ctx.font = '11px Segoe UI, system-ui, sans-serif'
-    ctx.textBaseline = 'top'
-    ctx.fillText('O', ox0 + arm + 3, oy0 + 1)
-    ctx.restore()
   }
 }
 
@@ -385,21 +209,12 @@ function redrawOverview(el: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
       PAD_X,
       b.labelY + Math.round(LABEL_H * 0.72),
     )
-    drawSheetContent(ctx, b.pack, b.ox, b.oy, map, {
-      selectedId: atlasStore.state.selectedId,
+    drawSheetSpritesOnly(ctx, b.pack, b.ox, b.oy, map, {
       maxW: atlasStore.state.maxAtlasWidth,
       maxH: atlasStore.state.maxAtlasHeight,
-      showGrid: atlasStore.state.canvasHelperShowGrid,
-      showMaxBounds: atlasStore.state.canvasHelperShowMaxBounds,
-      showOutputBounds: atlasStore.state.canvasHelperShowOutputBounds,
-      showSpriteBounds: atlasStore.state.canvasHelperShowSpriteBounds,
-      showOrigin: atlasStore.state.canvasHelperShowOrigin,
-      helperStrokePx: atlasStore.state.canvasHelperStrokePx,
-      helperGridStep: atlasStore.state.canvasHelperGridStep,
       bleed,
       viewScale: scale.value,
       interpolation: atlasStore.state.canvasInterpolation,
-      hoverAtlasPixel: null,
     })
   }
 }
@@ -413,21 +228,12 @@ function redrawSingle(el: HTMLCanvasElement, ctx: CanvasRenderingContext2D, pack
   const logicH = Math.max(pack.height, limH) + 1
   el.width = logicW + 2 * bleed
   el.height = logicH + 2 * bleed
-  drawSheetContent(ctx, pack, 0, 0, map, {
-    selectedId: atlasStore.state.selectedId,
+  drawSheetSpritesOnly(ctx, pack, 0, 0, map, {
     maxW: atlasStore.state.maxAtlasWidth,
     maxH: atlasStore.state.maxAtlasHeight,
-    showGrid: atlasStore.state.canvasHelperShowGrid,
-    showMaxBounds: atlasStore.state.canvasHelperShowMaxBounds,
-    showOutputBounds: atlasStore.state.canvasHelperShowOutputBounds,
-    showSpriteBounds: atlasStore.state.canvasHelperShowSpriteBounds,
-    showOrigin: atlasStore.state.canvasHelperShowOrigin,
-    helperStrokePx: atlasStore.state.canvasHelperStrokePx,
-    helperGridStep: atlasStore.state.canvasHelperGridStep,
     bleed,
     viewScale: scale.value,
     interpolation: atlasStore.state.canvasInterpolation,
-    hoverAtlasPixel: hoverAtlas.value,
   })
 }
 
@@ -726,6 +532,81 @@ const canvasUseCrisp = computed(() =>
   resolveCanvasCrispClass(atlasStore.state.canvasInterpolation, scale.value),
 )
 
+/** 与画布同尺寸的 SVG 辅助线规格（矢量叠加，放大仍清晰） */
+const atlasHelpersSpec = computed((): AtlasHelpersSpec | null => {
+  const sheets = atlasStore.state.packSheets
+  if (!sheets.length) return null
+  const limW = atlasStore.state.maxAtlasWidth
+  const limH = atlasStore.state.maxAtlasHeight
+  const bleed = PREVIEW_ATLAS_BLEED
+  const st = atlasStore.state
+
+  if (sheets.length > 1 && overviewMode.value) {
+    const maxDim = sheets.reduce(
+      (acc, s) => Math.max(acc, s.width, s.height, limW, limH),
+      400,
+    )
+    const mul = clamp(maxDim / 400, 1.25, 6.5)
+    const layout = layoutOverview(sheets, mul, limW, limH, bleed)
+    const blocks: OverlayBlock[] = layout.blocks.map((b) => ({
+      ox: b.ox,
+      oy: b.oy,
+      bleed,
+      logicW: Math.max(b.pack.width, limW) + 1,
+      logicH: Math.max(b.pack.height, limH) + 1,
+      pack: b.pack,
+    }))
+    return {
+      width: layout.cw,
+      height: layout.ch,
+      blocks,
+      maxW: limW,
+      maxH: limH,
+      showGrid: st.canvasHelperShowGrid,
+      showMaxBounds: st.canvasHelperShowMaxBounds,
+      showOutputBounds: st.canvasHelperShowOutputBounds,
+      showSpriteBounds: st.canvasHelperShowSpriteBounds,
+      showOrigin: st.canvasHelperShowOrigin,
+      helperStrokePx: st.canvasHelperStrokePx,
+      helperGridStep: st.canvasHelperGridStep,
+      selectedId: st.selectedId,
+      hoverPixel: null,
+      viewScale: scale.value,
+    }
+  }
+
+  const pack = atlasStore.getCurrentPack()
+  if (!pack?.placements.length) return null
+  const logicW = Math.max(pack.width, limW) + 1
+  const logicH = Math.max(pack.height, limH) + 1
+  return {
+    width: logicW + 2 * bleed,
+    height: logicH + 2 * bleed,
+    blocks: [
+      {
+        ox: 0,
+        oy: 0,
+        bleed,
+        logicW,
+        logicH,
+        pack,
+      },
+    ],
+    maxW: limW,
+    maxH: limH,
+    showGrid: st.canvasHelperShowGrid,
+    showMaxBounds: st.canvasHelperShowMaxBounds,
+    showOutputBounds: st.canvasHelperShowOutputBounds,
+    showSpriteBounds: st.canvasHelperShowSpriteBounds,
+    showOrigin: st.canvasHelperShowOrigin,
+    helperStrokePx: st.canvasHelperStrokePx,
+    helperGridStep: st.canvasHelperGridStep,
+    selectedId: st.selectedId,
+    hoverPixel: overviewMode.value ? null : hoverAtlas.value,
+    viewScale: scale.value,
+  }
+})
+
 const canvasSubtitle = computed(() => {
   const n = sheetCount.value
   if (n === 0) return t('canvas.noPreview')
@@ -887,16 +768,8 @@ watch(
 
 watch(
   () => [
-    atlasStore.state.selectedId,
     atlasStore.state.maxAtlasWidth,
     atlasStore.state.maxAtlasHeight,
-    atlasStore.state.canvasHelperShowGrid,
-    atlasStore.state.canvasHelperShowMaxBounds,
-    atlasStore.state.canvasHelperShowOutputBounds,
-    atlasStore.state.canvasHelperShowSpriteBounds,
-    atlasStore.state.canvasHelperShowOrigin,
-    atlasStore.state.canvasHelperStrokePx,
-    atlasStore.state.canvasHelperGridStep,
     atlasStore.state.canvasInterpolation,
   ],
   () => {
@@ -944,46 +817,6 @@ const panLayerStyle = computed(() => {
   }
 })
 
-/** 单页预览时，若选中图块在视口外则平移视图（不改变缩放） */
-function ensureSelectedSpriteInViewport() {
-  if (overviewMode.value || sheetCount.value === 0) return
-  const id = atlasStore.state.selectedId
-  const vp = viewportRef.value
-  const cv = canvasRef.value
-  if (!id || !vp || !cv) return
-  const pack = atlasStore.getCurrentPack()
-  if (!pack) return
-  const pl = pack.placements.find((p) => p.id === id)
-  if (!pl) return
-  const bleed = PREVIEW_ATLAS_BLEED
-  const sx = bleed + pl.x
-  const sy = bleed + pl.y
-  const sw = pl.w
-  const sh = pl.h
-  const pad = 20
-  const sc = scale.value
-  const x1 = tx.value + sx * sc
-  const y1 = ty.value + sy * sc
-  const x2 = tx.value + (sx + sw) * sc
-  const y2 = ty.value + (sy + sh) * sc
-  const vw = vp.clientWidth
-  const vh = vp.clientHeight
-  let dtx = 0
-  let dty = 0
-  if (x1 < pad) dtx = pad - x1
-  else if (x2 > vw - pad) dtx = vw - pad - x2
-  if (y1 < pad) dty = pad - y1
-  else if (y2 > vh - pad) dty = vh - pad - y2
-  if (dtx !== 0) tx.value += dtx
-  if (dty !== 0) ty.value += dty
-}
-
-watch(
-  () => atlasStore.state.selectedId,
-  () => {
-    nextTick(() => ensureSelectedSpriteInViewport())
-  },
-)
 </script>
 
 <template>
@@ -1116,6 +949,7 @@ watch(
           :class="{ 'cv-crisp': canvasUseCrisp }"
           @pointerdown="onCanvasPointerDown"
         />
+        <AtlasHelpersSvg v-if="atlasHelpersSpec" :spec="atlasHelpersSpec" />
       </div>
       <div v-if="pixelHudVisible" class="pixel-hud" aria-live="polite">{{ pixelHudLine }}</div>
       <div v-if="sheetCount > 0" class="zoom-hud" role="toolbar" :aria-label="t('canvas.zoomToolbar')">
