@@ -2,8 +2,10 @@
 """Build then serve dist with vite preview.
 
 成功执行 npm run build 后，会校验 dist 产物完整，再启动 vite preview。
-默认优先使用 4173；若已被占用，Vite 会自动尝试下一可用端口（未传 --strictPort）。
+默认端口 **4174**（与 VS Code 扩展 `textureAtlas.previewPort` 一致），避免与占用 **4173** 的其他 Vite 项目混淆。
+环境变量 TEXTURE_ATLAS_PREVIEW_PORT 可覆盖端口；使用 --strictPort，端口被占用时会失败而非静默换端口。
 """
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +13,7 @@ from pathlib import Path
 from deps_check import require_node_modules, verify_frontend_dist
 
 ROOT = Path(__file__).resolve().parent
+PREVIEW_PORT = int(os.environ.get("TEXTURE_ATLAS_PREVIEW_PORT", "4174"))
 
 
 def main() -> int:
@@ -28,14 +31,25 @@ def main() -> int:
     err = verify_frontend_dist(ROOT)
     if err is not None:
         return err
+    pv = str(PREVIEW_PORT)
     if sys.platform == "win32":
         return subprocess.call(
-            "npm run preview -- --host 127.0.0.1 --port 4173",
+            f"npm run preview -- --host 127.0.0.1 --port {pv} --strictPort",
             cwd=ROOT,
             shell=True,
         )
     return subprocess.call(
-        ["npm", "run", "preview", "--", "--host", "127.0.0.1", "--port", "4173"],
+        [
+            "npm",
+            "run",
+            "preview",
+            "--",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            pv,
+            "--strictPort",
+        ],
         cwd=ROOT,
     )
 

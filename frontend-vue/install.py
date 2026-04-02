@@ -6,7 +6,8 @@
 安装位置（默认同时装两处）:
   Windows: %USERPROFILE%\\.vscode\\extensions\\<publisher>.<name>-<version>
            %USERPROFILE%\\.cursor\\extensions\\<publisher>.<name>-<version>
-  默认会先执行 ``npm run test``（``vue-tsc`` + ``vite build``，**不 bump 版本号**）并校验 ``dist/`` 产物，再装扩展/MCP。
+  若缺少 ``frontend-vue/node_modules``，会先在该目录 **自动执行 ``npm install``**（需本机已安装 Node/npm）。
+  默认还会执行 ``npm run test``（``vue-tsc`` + ``vite build``）并校验 ``dist/`` 产物，再将 ``dist/`` **同步到** ``vscode-extension/dist/``（扩展 Webview 内置 UI，**安装后不依赖** localhost 预览），再装扩展/MCP。
   若扩展列表里看不到：先完全退出并重启 Cursor/VS Code，或命令面板执行「Developer: Reload Window」。
 
 说明：即使 mcp-server 的 npm install 失败，仍会尝试复制扩展（旧版脚本会在 npm 失败时直接退出导致「扩展没装上」）。
@@ -31,7 +32,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from deps_check import require_node_modules, verify_frontend_dist
+from deps_check import ensure_node_modules, verify_frontend_dist
 
 ROOT = Path(__file__).resolve().parent
 REPO_ROOT = ROOT.parent
@@ -140,6 +141,31 @@ def _npm_install_mcp(dry: bool) -> int:
     return subprocess.call(["npm", "install"], cwd=MCP_DIR)
 
 
+def _sync_dist_to_extension(dry: bool) -> int:
+    """将 ROOT/dist 复制到 vscode-extension/dist，供扩展 Webview 内置加载。"""
+    script = ROOT / "scripts" / "sync-dist-to-extension.mjs"
+    if not script.is_file():
+        print("警告：未找到 scripts/sync-dist-to-extension.mjs", file=sys.stderr)
+        return 0
+    if dry:
+        print(f"[dry-run] node {script} (cwd={ROOT})")
+        return 0
+    if not (ROOT / "dist" / "index.html").is_file():
+        print(
+            "提示：无 dist/index.html，跳过同步到 vscode-extension/dist（扩展将缺少内置 UI）。",
+            file=sys.stderr,
+        )
+        return 0
+    node = shutil.which("node")
+    if not node:
+        print("错误：未找到 node，无法将 dist 同步到扩展目录。", file=sys.stderr)
+        return 1
+    r = subprocess.call([node, str(script)], cwd=ROOT)
+    if r == 0:
+        print("已将 dist/ 同步到 vscode-extension/dist/（扩展内置 Webview）。")
+    return r
+
+
 def _copy_extension(dst: Path, dry: bool) -> None:
     name = _ext_folder_name()
     target = dst / name
@@ -225,15 +251,17 @@ def main() -> int:
         print("错误：不能同时指定 --vscode-only 与 --cursor-only", file=sys.stderr)
         return 1
 
+    if not args.dry_run:
+        err = ensure_node_modules(ROOT, auto_install=True)
+        if err is not None:
+            return err
+
     if args.dry_run:
         if not args.skip_frontend_build:
             print("[dry-run] npm run test + verify_frontend_dist(dist/index.html, dist/assets/*.js,*.css)")
     elif args.skip_frontend_build:
         print("提示：已跳过前端编译校验（--skip-frontend-build）。", file=sys.stderr)
     else:
-        err = require_node_modules()
-        if err is not None:
-            return err
         if sys.platform == "win32":
             r = subprocess.call("npm run test", cwd=ROOT, shell=True)
         else:
@@ -248,6 +276,10 @@ def main() -> int:
         if err is not None:
             return err
         print("已确认 frontend-vue 编译产物 dist/ 可用。")
+
+    sync_r = _sync_dist_to_extension(args.dry_run)
+    if sync_r != 0:
+        return sync_r
 
     if args.vscode_only:
         do_vscode, do_cursor = True, False

@@ -1,5 +1,12 @@
 # 物理规格：texture-atlas-editor-spa
 
+## VS Code / Cursor 扩展（宿主行为，实现见 `frontend-vue/vscode-extension/`）
+
+- **入口**：`extension.cjs`（`package.json` 的 `main`）；侧栏 Webview id `textureAtlas.webview`，命令 **`textureAtlas.openBuiltIn`** 打开编辑器内嵌面板。
+- **内置 UI**：打 VSIX / `install.py` 前将 `frontend-vue/dist/` 同步至 **`vscode-extension/dist/`**（`scripts/sync-dist-to-extension.mjs`）；Webview 通过 **`asWebviewUri`** 加载静态资源，**不依赖**本机 `http` 预览。
+- **HTML 注入**：去掉 Vite 的 **`crossorigin`**；写入 **CSP**（含 **`script-src … 'unsafe-eval'`**、**`img-src … blob:`** 等）与 **`<base href>`**；为 `<body>` 追加 **`ta-vscode-webview`**，供前端收紧边距/去边框（与浏览器独立页区分）。
+- **状态栏**：**右侧**对齐，**`priority: 0`**（尽量处于状态栏**最右**）；图标 **`$(layout)`**，文字 **TextureAtlas**，前景色 **`#FFCC00`**。
+
 ## 清单 JSON（version 1）
 
 | 字段 | 类型 | 说明 |

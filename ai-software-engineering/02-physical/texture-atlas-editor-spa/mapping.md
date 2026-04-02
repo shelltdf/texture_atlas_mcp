@@ -3,7 +3,8 @@
 | 元素 | 路径 |
 |------|------|
 | 应用入口 | `frontend-vue/src/main.ts` |
-| 主布局 | `frontend-vue/src/App.vue` |
+| 主布局 | `frontend-vue/src/App.vue`（含 `body.ta-vscode-webview` 下 Webview 样式） |
+| VS Code / Cursor 扩展宿主 | `frontend-vue/vscode-extension/extension.cjs`、`package.json` |
 | 菜单栏（含帮助「支持的格式」对话框） | `frontend-vue/src/components/MenuBar.vue` |
 | 工具栏（导入图片 / 导入图集 / 打包 / 导出图集） | `frontend-vue/src/components/ToolBar.vue` |
 | 状态栏 | `frontend-vue/src/components/StatusBar.vue` |

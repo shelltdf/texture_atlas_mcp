@@ -11,6 +11,14 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
 const extDir = path.join(root, 'vscode-extension')
+
+// 内置静态资源（与 vsix 一并安装，不依赖外部预览）
+const syncCmd = `node ${JSON.stringify(path.join(root, 'scripts', 'sync-dist-to-extension.mjs'))}`
+try {
+  execSync(syncCmd, { cwd: root, stdio: 'inherit', shell: true, windowsHide: true })
+} catch {
+  process.exit(1)
+}
 const pkgPath = path.join(extDir, 'package.json')
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'))
 const outDir = path.join(root, 'vsix')

@@ -45,6 +45,8 @@ watch(locale, syncDocumentTitle)
 .win-app {
   display: flex;
   flex-direction: column;
+  width: 100%;
+  min-width: 0;
   height: 100%;
   background: var(--win-bg);
   border: 1px solid var(--win-border-dark);
@@ -86,4 +88,24 @@ watch(locale, syncDocumentTitle)
   background: var(--win-main-canvas-bg);
   padding: 0;
 }
+</style>
+
+<style>
+  /* 扩展 Webview：.win-app 原有 border + inset box-shadow 会与面板内缘叠成「两条边」 */
+  body.ta-vscode-webview .win-app {
+    border: none;
+    box-shadow: none;
+  }
+  /* Webview 宿主有时会带默认 padding，或 body 背景与 .win-app 不一致，看起来像 #app 两侧露灰条 */
+  body.ta-vscode-webview {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 100%;
+    background: var(--win-bg);
+  }
+  body.ta-vscode-webview #app {
+    width: 100%;
+    min-width: 0;
+  }
 </style>

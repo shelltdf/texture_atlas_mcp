@@ -28,3 +28,5 @@ flowchart LR
 ## 与物理阶段映射
 
 构建目标 `texture-atlas-editor-spa` 对应 `frontend-vue/` 单页应用；详见 `02-physical/README.md`。
+
+**交付面**：同一 SPA 可运行于 **浏览器**（`npm run dev` / 静态托管）、可选 **Electron**（`run.py`）、**VS Code / Cursor Webview**（`vscode-extension` 内置 `dist/`，侧栏 + 「在编辑器中打开」）。逻辑与数据流一致，宿主差异（CSP、状态栏、无新窗口）见 `02-physical/texture-atlas-editor-spa/spec.md`。

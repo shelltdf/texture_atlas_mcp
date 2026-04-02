@@ -13,3 +13,4 @@
 
 - **npm**：`npm run build` → `dist/`
 - **开发**：`npm run dev`（见 `frontend-vue/dev.py`）
+- **VS Code / Cursor 扩展**：`npm run package:vsix` 前会同步 `dist/` → `vscode-extension/dist/`；扩展清单与宿主逻辑见 `../vscode-extension/`（`extension.cjs`、`package.json`）。

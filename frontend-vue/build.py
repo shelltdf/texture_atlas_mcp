@@ -18,6 +18,7 @@ install.py 的额外参数请单独执行: python install.py --dry-run
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -48,14 +49,25 @@ def _package_electron() -> int:
 
 
 def _after_web() -> int:
+    pv = os.environ.get("TEXTURE_ATLAS_PREVIEW_PORT", "4174")
     if sys.platform == "win32":
         return subprocess.call(
-            "npm run preview -- --host 127.0.0.1 --port 4173",
+            f"npm run preview -- --host 127.0.0.1 --port {pv} --strictPort",
             cwd=ROOT,
             shell=True,
         )
     return subprocess.call(
-        ["npm", "run", "preview", "--", "--host", "127.0.0.1", "--port", "4173"],
+        [
+            "npm",
+            "run",
+            "preview",
+            "--",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            pv,
+            "--strictPort",
+        ],
         cwd=ROOT,
     )
 
@@ -83,7 +95,7 @@ def main() -> int:
     g.add_argument(
         "--web",
         action="store_true",
-        help="构建成功后：vite preview（浏览器，127.0.0.1:4173）；不跑 install.py",
+        help="构建成功后：vite preview（默认 127.0.0.1:4174，与扩展一致）；不跑 install.py",
     )
     g.add_argument(
         "--electron",

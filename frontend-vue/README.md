@@ -24,7 +24,7 @@
 | 脚本 | 说明 |
 |------|------|
 | `build.py` | **无参数**：`npm run build` + **打 `.vsix`** + **`install.py`**；**`--dist-only`** 仅构建 dist + `.vsix`；**`--web`** / **`--electron`** 为构建后只开预览或开发态 Electron；**`--electron-exe`** 为构建 + `.vsix` + **electron-builder**（`release/`，不跑 `install.py`） |
-| `run_web.py` | `npm run build` 后 **校验 `dist/` 产物**，再 `vite preview`（默认 `127.0.0.1:4173`） |
+| `run_web.py` | `npm run build` 后 **校验 `dist/` 产物**，再 `vite preview`（默认 **`127.0.0.1:4174`**，`--strictPort`；与扩展 `textureAtlas.previewPort` 一致） |
 | `run.py` | `npm run build` 后 **校验 `dist/`**，再 **Electron** 打开桌面窗口（加载 `dist/index.html`） |
 | `install.py` | 默认先 **`npm run test`**（`vue-tsc` + `vite build`，不 bump 版本）并 **校验 `dist/`**，再装扩展 / `mcp-server` / VSIX / `.cursor/mcp.json`；可用 **`--skip-frontend-build`** 跳过仅当你已构建过 |
 
