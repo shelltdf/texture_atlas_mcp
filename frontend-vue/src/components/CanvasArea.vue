@@ -2,7 +2,11 @@
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PackResult, Placement } from '../lib/packing'
-import type { AtlasImageEntry, CanvasInterpolationMode } from '../stores/atlasStore'
+import type {
+  AtlasImageEntry,
+  CanvasHelperChannelMode,
+  CanvasInterpolationMode,
+} from '../stores/atlasStore'
 import { atlasStore } from '../stores/atlasStore'
 import { i18n } from '../i18n'
 import AtlasHelpersSvg, {
@@ -51,7 +55,7 @@ function clamp(v: number, lo: number, hi: number) {
   return Math.min(hi, Math.max(lo, v))
 }
 
-/** drawImage 是否启用平滑插值（与 canvas 元素 cv-crisp 一致） */
+/** drawImage 是否在缩放采样时使用平滑（仅当源与目标尺寸不一致时才有视觉效果；1:1 贴图时无差异） */
 function resolveImageSmoothing(mode: CanvasInterpolationMode, viewScale: number): boolean {
   if (mode === 'nearest') return false
   if (mode === 'smooth') return true
@@ -78,6 +82,68 @@ interface SheetSpriteOpts {
   bleed: number
   viewScale: number
   interpolation: CanvasInterpolationMode
+  channel: CanvasHelperChannelMode
+}
+
+/** 单精灵按通道绘制用离屏画布（复用，避免每帧分配） */
+let channelScratch: HTMLCanvasElement | null = null
+
+function ensureChannelScratch(w: number, h: number): HTMLCanvasElement {
+  if (!channelScratch) channelScratch = document.createElement('canvas')
+  if (channelScratch.width < w) channelScratch.width = w
+  if (channelScratch.height < h) channelScratch.height = h
+  return channelScratch
+}
+
+/**
+ * 将精灵某一通道显示为灰度：R/G/B 保留原 alpha；A 为灰度且不透明（便于观察透明区）。
+ */
+function drawSpriteChannel(
+  ctx: CanvasRenderingContext2D,
+  entry: AtlasImageEntry,
+  dx: number,
+  dy: number,
+  dw: number,
+  dh: number,
+  channel: Exclude<CanvasHelperChannelMode, 'rgba'>,
+) {
+  const iw = entry.width
+  const ih = entry.height
+  if (iw < 1 || ih < 1) return
+  const scratch = ensureChannelScratch(iw, ih)
+  const sctx = scratch.getContext('2d', { willReadFrequently: true })
+  if (!sctx) {
+    ctx.drawImage(entry.img, 0, 0, iw, ih, dx, dy, dw, dh)
+    return
+  }
+  sctx.setTransform(1, 0, 0, 1, 0, 0)
+  sctx.clearRect(0, 0, iw, ih)
+  sctx.drawImage(entry.img, 0, 0)
+  let imgData: ImageData
+  try {
+    imgData = sctx.getImageData(0, 0, iw, ih)
+  } catch {
+    ctx.drawImage(entry.img, 0, 0, iw, ih, dx, dy, dw, dh)
+    return
+  }
+  const d = imgData.data
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i]
+    const g = d[i + 1]
+    const b = d[i + 2]
+    const a = d[i + 3]
+    let v = 0
+    if (channel === 'r') v = r
+    else if (channel === 'g') v = g
+    else if (channel === 'b') v = b
+    else v = a
+    d[i] = v
+    d[i + 1] = v
+    d[i + 2] = v
+    d[i + 3] = channel === 'a' ? 255 : a
+  }
+  sctx.putImageData(imgData, 0, 0)
+  ctx.drawImage(scratch, 0, 0, iw, ih, dx, dy, dw, dh)
 }
 
 function layoutOverview(
@@ -138,12 +204,17 @@ function drawSheetSpritesOnly(
   if (useSmooth) {
     ctx.imageSmoothingQuality = 'high'
   }
+  const ch = opts.channel
   for (const p of pack.placements) {
     const entry = map.get(p.id)
     if (!entry) continue
     const x = ox0 + p.x
     const y = oy0 + p.y
-    ctx.drawImage(entry.img, 0, 0, entry.width, entry.height, x, y, p.w, p.h)
+    if (ch === 'rgba') {
+      ctx.drawImage(entry.img, 0, 0, entry.width, entry.height, x, y, p.w, p.h)
+    } else {
+      drawSpriteChannel(ctx, entry, x, y, p.w, p.h, ch)
+    }
   }
 }
 
@@ -215,6 +286,7 @@ function redrawOverview(el: HTMLCanvasElement, ctx: CanvasRenderingContext2D) {
       bleed,
       viewScale: scale.value,
       interpolation: atlasStore.state.canvasInterpolation,
+      channel: atlasStore.state.canvasHelperChannel,
     })
   }
 }
@@ -234,6 +306,7 @@ function redrawSingle(el: HTMLCanvasElement, ctx: CanvasRenderingContext2D, pack
     bleed,
     viewScale: scale.value,
     interpolation: atlasStore.state.canvasInterpolation,
+    channel: atlasStore.state.canvasHelperChannel,
   })
 }
 
@@ -278,8 +351,8 @@ function fitToViewport() {
   let s = Math.min(rw / cw, rh / ch)
   s = clamp(s, 0.05, 16)
   scale.value = s
-  tx.value = (vp.clientWidth - cw * s) / 2
-  ty.value = (vp.clientHeight - ch * s) / 2
+  tx.value = Math.round((vp.clientWidth - cw * s) / 2)
+  ty.value = Math.round((vp.clientHeight - ch * s) / 2)
 }
 
 function clientToCanvas(vpLocalX: number, vpLocalY: number): { cx: number; cy: number } {
@@ -410,8 +483,8 @@ function onWheel(e: WheelEvent) {
   const newScale = clamp(scale.value * factor, 0.05, 16)
   const wx = (mx - tx.value) / scale.value
   const wy = (my - ty.value) / scale.value
-  tx.value = mx - wx * newScale
-  ty.value = my - wy * newScale
+  tx.value = Math.round(mx - wx * newScale)
+  ty.value = Math.round(my - wy * newScale)
   scale.value = newScale
 }
 
@@ -526,11 +599,41 @@ function onInterpolationChange(ev: Event) {
   atlasStore.setCanvasInterpolation(v)
 }
 
+function onChannelChange(ev: Event) {
+  const v = (ev.target as HTMLSelectElement).value as CanvasHelperChannelMode
+  atlasStore.setCanvasHelperChannel(v)
+}
+
 const sheetCount = computed(() => atlasStore.state.packSheets.length)
+
+const channelLegendText = computed(() => {
+  const m = atlasStore.state.canvasHelperChannel
+  if (m === 'rgba') return ''
+  const keys = {
+    r: 'canvas.legChannel_r',
+    g: 'canvas.legChannel_g',
+    b: 'canvas.legChannel_b',
+    a: 'canvas.legChannel_a',
+  } as const
+  return t(keys[m])
+})
 
 const canvasUseCrisp = computed(() =>
   resolveCanvasCrispClass(atlasStore.state.canvasInterpolation, scale.value),
 )
+
+/**
+ * 视口缩放时整幅位图的插值（CSS），与 cv-crisp 一致。
+ * 精灵在图集内多为 1:1 贴图时 drawImage 的 imageSmoothingEnabled 几乎不变更外观，主要靠此项。
+ */
+const canvasPixelScaleStyle = computed(() => ({
+  imageRendering: canvasUseCrisp.value ? ('pixelated' as const) : ('auto' as const),
+}))
+
+/** 与画布同步：整层缩放时辅助线 SVG 与位图使用相同采样，避免一块糊一块锐 */
+const helpersSvgScaleStyle = computed(() => ({
+  imageRendering: canvasUseCrisp.value ? ('pixelated' as const) : ('auto' as const),
+}))
 
 /** 与画布同尺寸的 SVG 辅助线规格（矢量叠加，放大仍清晰） */
 const atlasHelpersSpec = computed((): AtlasHelpersSpec | null => {
@@ -665,6 +768,21 @@ const pixelHudLine = computed(() => {
   })
 })
 
+/** HUD 左侧：仅 RGB 的实色块（不含透明度） */
+const pixelHudRgbSwatchStyle = computed(() => {
+  const c = hoverRgba.value
+  if (!c) return {}
+  return { backgroundColor: `rgb(${c.r}, ${c.g}, ${c.b})` }
+})
+
+/** HUD：与 RGB 块等大，灰度表示 Alpha（黑=0，白=255） */
+const pixelHudAlphaSwatchStyle = computed(() => {
+  const c = hoverRgba.value
+  if (!c) return {}
+  const g = c.a
+  return { backgroundColor: `rgb(${g}, ${g}, ${g})` }
+})
+
 /** 与滚轮一致：每次 ×1.12 / ÷1.12 */
 const ZOOM_STEP = 1.12
 
@@ -677,8 +795,8 @@ function zoomAtViewportCenter(nextScale: number) {
   const cy = vp.clientHeight / 2
   const wx = (cx - tx.value) / scale.value
   const wy = (cy - ty.value) / scale.value
-  tx.value = cx - wx * s
-  ty.value = cy - wy * s
+  tx.value = Math.round(cx - wx * s)
+  ty.value = Math.round(cy - wy * s)
   scale.value = s
 }
 
@@ -771,6 +889,7 @@ watch(
     atlasStore.state.maxAtlasWidth,
     atlasStore.state.maxAtlasHeight,
     atlasStore.state.canvasInterpolation,
+    atlasStore.state.canvasHelperChannel,
   ],
   () => {
     redraw()
@@ -798,24 +917,75 @@ onUnmounted(() => {
 
 /**
  * 棋盘格：2×2 **纹理像素** 为一格，与画布/图集像素 1:1（随 pan-layer 缩放即「内部像素比例」）。
- * 单张输入上限矩形为 [0,maxW)×[0,maxH)（纹理坐标），四边均在整数像素上，与格点对齐；
- * 位置与纹理原点 (0,0) 对齐（扣预览 bleed）。
+ * 仅铺在「单张上限」紫框 **内侧**（与 AtlasHelpersSvg 紫框描边内侧一致），不铺满整张画布留白区。
  */
 const CHECKER_TEXTURE_PX = 2
 
-const panLayerStyle = computed(() => {
+/** 与 SVG 紫框（max bounds）内侧对齐的棋盘区域 */
+interface CheckerMaxRegion {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+const checkerMaxRegions = computed((): CheckerMaxRegion[] => {
+  const sheets = atlasStore.state.packSheets
+  if (!sheets.length) return []
+  const limW = atlasStore.state.maxAtlasWidth
+  const limH = atlasStore.state.maxAtlasHeight
+  const bleed = PREVIEW_ATLAS_BLEED
+  const s = Math.max(1, atlasStore.state.canvasHelperStrokePx)
+  const iw = Math.max(1, limW - 2 * s)
+  const ih = Math.max(1, limH - 2 * s)
+  const innerLeft = bleed + s
+  const innerTop = bleed + s
+
+  if (sheets.length > 1 && overviewMode.value) {
+    const maxDim = sheets.reduce(
+      (acc, x) => Math.max(acc, x.width, x.height, limW, limH),
+      400,
+    )
+    const mul = clamp(maxDim / 400, 1.25, 6.5)
+    const layout = layoutOverview(sheets, mul, limW, limH, bleed)
+    return layout.blocks.map((b) => ({
+      left: b.ox + innerLeft,
+      top: b.oy + innerTop,
+      width: iw,
+      height: ih,
+    }))
+  }
+
+  const pack = atlasStore.getCurrentPack()
+  if (!pack?.placements.length) return []
+
+  return [{ left: innerLeft, top: innerTop, width: iw, height: ih }]
+})
+
+function checkerRegionStyle(r: CheckerMaxRegion): Record<string, string> {
   const bleed = PREVIEW_ATLAS_BLEED
   const c = CHECKER_TEXTURE_PX
   return {
-    transform: `translate(${tx.value}px, ${ty.value}px) scale(${scale.value})`,
-    transformOrigin: '0 0',
+    position: 'absolute',
+    left: `${r.left}px`,
+    top: `${r.top}px`,
+    width: `${r.width}px`,
+    height: `${r.height}px`,
+    boxSizing: 'border-box',
+    pointerEvents: 'none',
+    zIndex: '0',
     backgroundImage:
       'repeating-conic-gradient(#bdbdbd 0% 25%, #d0d0d0 0% 50%)',
     backgroundSize: `${c}px ${c}px`,
-    backgroundPosition: `-${bleed}px -${bleed}px`,
+    backgroundPosition: `-${bleed + r.left}px -${bleed + r.top}px`,
     backgroundRepeat: 'repeat',
   }
-})
+}
+
+const panLayerStyle = computed(() => ({
+  transform: `translate(${tx.value}px, ${ty.value}px) scale(${scale.value})`,
+  transformOrigin: '0 0',
+}))
 
 </script>
 
@@ -929,6 +1099,21 @@ const panLayerStyle = computed(() => {
           <option value="smooth">{{ t('canvas.interpolationSmooth') }}</option>
         </select>
       </label>
+      <label class="tool-item tool-channel">
+        <span class="tool-label-text">{{ t('canvas.channel') }}</span>
+        <select
+          class="tool-select win-select"
+          :value="atlasStore.state.canvasHelperChannel"
+          :title="t('canvas.channelTitle')"
+          @change="onChannelChange"
+        >
+          <option value="rgba">{{ t('canvas.channelRgba') }}</option>
+          <option value="r">{{ t('canvas.channelR') }}</option>
+          <option value="g">{{ t('canvas.channelG') }}</option>
+          <option value="b">{{ t('canvas.channelB') }}</option>
+          <option value="a">{{ t('canvas.channelA') }}</option>
+        </select>
+      </label>
     </div>
     <div
       ref="viewportRef"
@@ -943,15 +1128,48 @@ const panLayerStyle = computed(() => {
       @contextmenu.prevent
     >
       <div class="pan-layer" :style="panLayerStyle">
+        <div
+          v-for="(cr, ci) in checkerMaxRegions"
+          :key="'chk-' + ci"
+          class="checker-max-inner"
+          :style="checkerRegionStyle(cr)"
+          aria-hidden="true"
+        />
         <canvas
           ref="canvasRef"
           class="cv"
           :class="{ 'cv-crisp': canvasUseCrisp }"
+          :style="canvasPixelScaleStyle"
           @pointerdown="onCanvasPointerDown"
         />
-        <AtlasHelpersSvg v-if="atlasHelpersSpec" :spec="atlasHelpersSpec" />
+        <AtlasHelpersSvg
+          v-if="atlasHelpersSpec"
+          :spec="atlasHelpersSpec"
+          :style="helpersSvgScaleStyle"
+        />
       </div>
-      <div v-if="pixelHudVisible" class="pixel-hud" aria-live="polite">{{ pixelHudLine }}</div>
+      <div
+        v-if="pixelHudVisible"
+        class="pixel-hud"
+        aria-live="polite"
+        :aria-label="pixelHudLine"
+      >
+        <div class="pixel-hud-inner">
+          <div class="pixel-hud-swatches" role="img" :aria-label="t('canvas.pixelHudSwatchesAria')">
+            <span
+              class="pixel-hud-swatch pixel-hud-swatch-rgb"
+              :style="pixelHudRgbSwatchStyle"
+              :title="t('canvas.pixelHudRgbTitle')"
+            />
+            <span
+              class="pixel-hud-swatch pixel-hud-swatch-alpha"
+              :style="pixelHudAlphaSwatchStyle"
+              :title="t('canvas.pixelHudAlphaTitle')"
+            />
+          </div>
+          <div class="pixel-hud-text">{{ pixelHudLine }}</div>
+        </div>
+      </div>
       <div v-if="sheetCount > 0" class="zoom-hud" role="toolbar" :aria-label="t('canvas.zoomToolbar')">
         <button type="button" class="zoom-btn" :title="t('canvas.zoomOutTitle')" @click="onZoomOut">
           −
@@ -987,13 +1205,17 @@ const panLayerStyle = computed(() => {
       <span v-if="atlasStore.state.canvasHelperShowOrigin" class="leg">
         <span class="sw s-origin" aria-hidden="true" />{{ t('canvas.legOrigin') }}
       </span>
+      <span v-if="atlasStore.state.canvasHelperChannel !== 'rgba'" class="leg leg-channel">
+        <span class="sw s-channel" aria-hidden="true" />{{ channelLegendText }}
+      </span>
       <span
         v-if="
           !atlasStore.state.canvasHelperShowGrid &&
           !atlasStore.state.canvasHelperShowMaxBounds &&
           !atlasStore.state.canvasHelperShowOutputBounds &&
           !atlasStore.state.canvasHelperShowSpriteBounds &&
-          !atlasStore.state.canvasHelperShowOrigin
+          !atlasStore.state.canvasHelperShowOrigin &&
+          atlasStore.state.canvasHelperChannel === 'rgba'
         "
         class="leg-off"
         >{{ t('canvas.legOff') }}</span
@@ -1113,6 +1335,10 @@ const panLayerStyle = computed(() => {
   flex-wrap: wrap;
   max-width: 100%;
 }
+.tool-channel {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
 .tool-label-text {
   flex-shrink: 0;
 }
@@ -1181,8 +1407,8 @@ const panLayerStyle = computed(() => {
   right: 8px;
   bottom: 8px;
   z-index: 2;
-  max-width: min(100%, 420px);
-  padding: 4px 8px;
+  max-width: min(100%, 480px);
+  padding: 6px 8px;
   font-size: 11px;
   font-family: Consolas, 'Cascadia Mono', 'Segoe UI Mono', monospace;
   color: #111;
@@ -1193,6 +1419,29 @@ const panLayerStyle = computed(() => {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
   line-height: 1.35;
   word-break: break-all;
+}
+.pixel-hud-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pixel-hud-swatches {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.pixel-hud-swatch {
+  display: block;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1px solid #333;
+  flex-shrink: 0;
+}
+.pixel-hud-text {
+  min-width: 0;
+  flex: 1;
 }
 .viewport {
   flex: 1;
@@ -1213,14 +1462,20 @@ const panLayerStyle = computed(() => {
   position: absolute;
   left: 0;
   top: 0;
-  will-change: transform;
-  /* 棋盘格：2×2 纹理像素/格，见 panLayerStyle */
+  /* 与视口一致底色；棋盘格仅 .checker-max-inner 铺在紫框内 */
+  background: var(--win-main-canvas-bg);
+  /* 不使用 will-change: transform，减轻合成层整层纹理放大时的发糊 */
 }
+.checker-max-inner {
+  overflow: hidden;
+}
+/* 不再给整块画布加边框：否则会包住 bleed 留白，视觉上比紫色「单张上限」更大；边界以辅助线为准 */
+/* 层级：棋盘 0 < 位图 1 < AtlasHelpersSvg 辅助线 2 */
 .cv {
+  position: relative;
+  z-index: 1;
   display: block;
   image-rendering: auto;
-  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--win-border-dark);
   vertical-align: top;
   cursor: default;
 }
@@ -1279,6 +1534,9 @@ const panLayerStyle = computed(() => {
 .s-origin {
   background: linear-gradient(135deg, #ec4899 55%, #fbcfe8 55%);
   border-color: #9d174d;
+}
+.s-channel {
+  background: linear-gradient(90deg, #e11 0 34%, #1b1 34% 67%, #11e 67% 100%);
 }
 .hint-short {
   flex-shrink: 0;

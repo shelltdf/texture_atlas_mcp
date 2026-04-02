@@ -25,6 +25,9 @@ export type AtlasExportMode = 'png+json' | 'png-only' | 'json-only'
 /** 图集预览：精灵缩放插值（drawImage + 画布元素 CSS） */
 export type CanvasInterpolationMode = 'auto' | 'nearest' | 'smooth'
 
+/** 画布预览：单独查看某一颜色通道（灰度）；rgba 为正常合成 */
+export type CanvasHelperChannelMode = 'rgba' | 'r' | 'g' | 'b' | 'a'
+
 export interface AtlasImageEntry {
   id: string
   name: string
@@ -92,7 +95,9 @@ const state = reactive({
   /** 画布：辅助网格步长（纹理像素） */
   canvasHelperGridStep: 64,
   /** 画布：图集精灵插值 — auto：缩小时平滑、放大≥1 最近邻；nearest/smooth：强制 */
-  canvasInterpolation: 'auto' as CanvasInterpolationMode,
+  canvasInterpolation: 'nearest' as CanvasInterpolationMode,
+  /** 画布：辅助 — 仅预览用，按通道显示（不改变导出图集） */
+  canvasHelperChannel: 'rgba' as CanvasHelperChannelMode,
   packSheets: [] as PackResult[],
   activeSheetIndex: 0,
   packError: '' as string,
@@ -402,6 +407,9 @@ export const atlasStore = {
   },
   setCanvasInterpolation(mode: CanvasInterpolationMode) {
     state.canvasInterpolation = mode
+  },
+  setCanvasHelperChannel(mode: CanvasHelperChannelMode) {
+    state.canvasHelperChannel = mode
   },
   setActiveSheetIndex(i: number) {
     const n = state.packSheets.length

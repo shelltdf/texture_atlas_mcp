@@ -109,6 +109,28 @@ function spriteInnerRects(pl: Placement) {
 function originArm(pack: PackResult): number {
   return Math.min(14, pack.width, pack.height)
 }
+
+/** +X 轴末端箭头（纹理像素坐标） */
+function originXArrowPoints(blk: OverlayBlock): string {
+  const b = blk.bleed
+  const L = originArm(blk.pack)
+  const tx = b + L
+  const ty = b
+  const depth = 0.55
+  const half = 0.38
+  return `${tx},${ty} ${tx - depth},${ty - half} ${tx - depth},${ty + half}`
+}
+
+/** +Y 轴末端箭头（纹理像素坐标） */
+function originYArrowPoints(blk: OverlayBlock): string {
+  const b = blk.bleed
+  const L = originArm(blk.pack)
+  const tx = b
+  const ty = b + L
+  const depth = 0.55
+  const half = 0.38
+  return `${tx},${ty} ${tx - half},${ty - depth} ${tx + half},${ty - depth}`
+}
 </script>
 
 <template>
@@ -121,6 +143,8 @@ function originArm(pack: PackResult): number {
     aria-hidden="true"
   >
     <g v-for="(blk, bi) in spec.blocks" :key="bi" :transform="`translate(${blk.ox}, ${blk.oy})`">
+      <!-- 几何线框：crispEdges + 与画布同级的视口缩放采样（父组件 :style），避免放大发糊 -->
+      <g shape-rendering="crispEdges">
       <!-- 网格 -->
       <g v-if="spec.showGrid && spec.helperGridStep >= 4" shape-rendering="crispEdges">
         <line
@@ -197,6 +221,76 @@ function originArm(pack: PackResult): number {
         vector-effect="non-scaling-stroke"
       />
 
+      <!-- 原点：[0,0] 像素格 + xy 轴与箭头（线宽 0.1 纹理像素）；须先于悬停格绘制，使悬停在上层 -->
+      <g v-if="spec.showOrigin && blk.pack.width >= 1 && blk.pack.height >= 1">
+        <rect
+          :x="blk.bleed"
+          :y="blk.bleed"
+          width="1"
+          height="1"
+          fill="rgba(236, 72, 153, 0.18)"
+          stroke="rgba(236, 72, 153, 0.95)"
+          stroke-width="0.1"
+          stroke-linejoin="miter"
+          paint-order="stroke fill"
+        />
+        <line
+          :x1="blk.bleed"
+          :y1="blk.bleed"
+          :x2="blk.bleed + originArm(blk.pack)"
+          :y2="blk.bleed"
+          fill="none"
+          stroke="rgba(236, 72, 153, 0.92)"
+          stroke-width="0.1"
+          stroke-linecap="square"
+        />
+        <line
+          :x1="blk.bleed"
+          :y1="blk.bleed"
+          :x2="blk.bleed"
+          :y2="blk.bleed + originArm(blk.pack)"
+          fill="none"
+          stroke="rgba(236, 72, 153, 0.92)"
+          stroke-width="0.1"
+          stroke-linecap="square"
+        />
+        <polygon
+          :points="originXArrowPoints(blk)"
+          fill="rgba(236, 72, 153, 0.92)"
+          stroke="none"
+        />
+        <polygon
+          :points="originYArrowPoints(blk)"
+          fill="rgba(236, 72, 153, 0.92)"
+          stroke="none"
+        />
+        <text
+          shape-rendering="geometricPrecision"
+          text-rendering="geometricPrecision"
+          :x="blk.bleed + originArm(blk.pack) + 2"
+          :y="blk.bleed + 10"
+          fill="rgba(236, 72, 153, 0.95)"
+          font-size="10"
+          font-family="Segoe UI, system-ui, sans-serif"
+          font-style="italic"
+        >
+          x
+        </text>
+        <text
+          shape-rendering="geometricPrecision"
+          text-rendering="geometricPrecision"
+          :x="blk.bleed + 2"
+          :y="blk.bleed + originArm(blk.pack) + 10"
+          fill="rgba(236, 72, 153, 0.95)"
+          font-size="10"
+          font-family="Segoe UI, system-ui, sans-serif"
+          font-style="italic"
+        >
+          y
+        </text>
+      </g>
+
+      <!-- 悬停格（叠在原点之上） -->
       <rect
         v-if="
           spec.hoverPixel &&
@@ -211,37 +305,10 @@ function originArm(pack: PackResult): number {
         height="1"
         fill="none"
         stroke="rgba(255, 220, 60, 0.98)"
-        stroke-width="1"
-        vector-effect="non-scaling-stroke"
+        stroke-width="0.1"
+        stroke-linejoin="miter"
+        paint-order="stroke fill"
       />
-
-      <g v-if="spec.showOrigin && blk.pack.width >= 1 && blk.pack.height >= 1">
-        <rect
-          :x="blk.bleed"
-          :y="blk.bleed"
-          width="1"
-          height="1"
-          fill="rgba(236, 72, 153, 0.22)"
-          stroke="rgba(236, 72, 153, 0.95)"
-          stroke-width="1"
-          vector-effect="non-scaling-stroke"
-        />
-        <path
-          :d="`M ${blk.bleed} ${blk.bleed} L ${blk.bleed + originArm(blk.pack)} ${blk.bleed} M ${blk.bleed} ${blk.bleed} L ${blk.bleed} ${blk.bleed + originArm(blk.pack)}`"
-          fill="none"
-          stroke="rgba(236, 72, 153, 0.88)"
-          :stroke-width="Math.max(1, screenPx * 1.25)"
-          stroke-linecap="square"
-        />
-        <text
-          :x="blk.bleed + originArm(blk.pack) + 3"
-          :y="blk.bleed + 12"
-          fill="rgba(236, 72, 153, 0.95)"
-          font-size="11"
-          font-family="Segoe UI, system-ui, sans-serif"
-        >
-          O
-        </text>
       </g>
     </g>
   </svg>
@@ -252,8 +319,11 @@ function originArm(pack: PackResult): number {
   position: absolute;
   left: 0;
   top: 0;
+  z-index: 2;
   display: block;
   pointer-events: none;
   overflow: visible;
+  /* 叠在位图画布之上：.cv 为 z-index:1，棋盘为 0 */
+  /* 与 Canvas 视口缩放一致：由父组件绑定 image-rendering */
 }
 </style>
